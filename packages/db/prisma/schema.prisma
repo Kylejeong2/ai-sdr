@@ -8,3 +8,239 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum EmailType {
+  PERSONAL
+  COMPANY
+}
+
+enum LeadStatus {
+  NEW
+  ENRICHED
+  EMAIL_QUEUED
+  EMAIL_SENT
+  RESPONDED
+  CONVERTED
+  DEAD
+}
+
+enum EmailStatus {
+  DRAFT
+  QUEUED
+  SENT
+  OPENED
+  CLICKED
+  REPLIED
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Lead {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  emailType     EmailType
+  firstName     String?
+  lastName      String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  status        LeadStatus  @default(NEW)
+  
+  // Enriched data
+  linkedInUrl   String?
+  company       String?
+  title         String?
+  industry      String?
+  companySize   String?
+  location      String?
+  
+  // Relations
+  enrichmentData Json?
+  emails        Email[]
+  comments      Comment[]
+  tags          Tag[]
+  assignedTo    TeamMember? @relation(fields: [assignedToId], references: [id])
+  assignedToId  String?
+  sequence      Sequence?   @relation(fields: [sequenceId], references: [id])
+  sequenceId    String?
+  activities    Activity[]
+}
+
+model Email {
+  id          String      @id @default(cuid())
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id])
+  subject     String
+  content     String
+  status      EmailStatus @default(DRAFT)
+  sentAt      DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  repliedAt   DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // A/B Testing
+  variant     String?
+  testGroup   String?
+  
+  // Tracking data
+  metadata    Json?
+  sequence    Sequence?   @relation(fields: [sequenceId], references: [id])
+  sequenceId  String?
+}
+
+model EmailTemplate {
+  id          String      @id @default(cuid())
+  name        String
+  subject     String
+  content     String
+  variables   String[]    // Array of variable names that can be replaced
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  teamId      String
+  team        Team        @relation(fields: [teamId], references: [id])
+  isShared    Boolean     @default(false)
+  createdBy   TeamMember  @relation(fields: [createdById], references: [id])
+  createdById String
+}
+
+model EnrichmentQueue {
+  id          String   @id @default(cuid())
+  leadId      String   @unique
+  attempts    Int      @default(0)
+  lastAttempt DateTime?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmailQueue {
+  id          String   @id @default(cuid())
+  emailId     String   @unique
+  attempts    Int      @default(0)
+  lastAttempt DateTime?
+  error       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String
+  members     TeamMember[]
+  templates   EmailTemplate[]
+  sequences   Sequence[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model TeamMember {
+  id          String       @id @default(cuid())
+  userId      String       // Clerk user ID
+  teamId      String
+  team        Team         @relation(fields: [teamId], references: [id])
+  role        TeamRole
+  leads       Lead[]
+  templates   EmailTemplate[]
+  activities  Activity[]
+  comments    Comment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Comment {
+  id          String      @id @default(cuid())
+  content     String
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id])
+  createdBy   TeamMember  @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Activity {
+  id          String      @id @default(cuid())
+  type        String      // e.g., "lead_created", "email_sent", "comment_added"
+  description String
+  metadata    Json?
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id])
+  teamMember  TeamMember  @relation(fields: [teamMemberId], references: [id])
+  teamMemberId String
+  createdAt   DateTime    @default(now())
+}
+
+model Tag {
+  id          String      @id @default(cuid())
+  name        String
+  color       String
+  leads       Lead[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Sequence {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  steps       Json        // Array of steps with timing and template IDs
+  teamId      String
+  team        Team        @relation(fields: [teamId], references: [id])
+  leads       Lead[]      // Leads currently in this sequence
+  emails      Email[]     // Emails sent as part of this sequence
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Integration {
+  id          String      @id @default(cuid())
+  type        String      // e.g., "crm", "calendar", "linkedin"
+  provider    String      // e.g., "salesforce", "hubspot", "google"
+  config      Json        // Configuration and credentials
+  teamId      String
+  isActive    Boolean     @default(true)
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Webhook {
+  id          String      @id @default(cuid())
+  url         String
+  events      String[]    // Array of event types to trigger on
+  secret      String      // Webhook signing secret
+  teamId      String
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model ABTest {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  variants    Json        // Array of template variants
+  metrics     Json        // Test metrics and results
+  startDate   DateTime
+  endDate     DateTime?
+  isActive    Boolean     @default(true)
+  teamId      String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model BlogPost {
+  id         String   @id @default(uuid())
+  title      String
+  content    String
+  slug       String   @unique
+  published  Boolean  @default(false)
+  coverImage String?  // url to be the cover image of the blog post
+  createdAt  DateTime @default(now())
+}
