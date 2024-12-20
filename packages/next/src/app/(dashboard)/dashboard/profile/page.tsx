@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
 import { Loader2, Camera } from "lucide-react"
-
+    
 export default function ProfilePage() {
   const { user, isLoaded } = useUser()
   const [saving, setSaving] = useState(false)
