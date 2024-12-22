@@ -57,12 +57,13 @@ import { format } from "date-fns"
 import { VariantProps } from "class-variance-authority"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { Label } from "@/components/ui/label"
+import { DateRange } from "react-day-picker"
 
 type SortField = "name" | "company" | "status" | "type" | "createdAt"
 type SortOrder = "asc" | "desc"
 
 interface FilterState {
-  dateRange: { from?: Date; to?: Date }
+  dateRange: DateRange | undefined
   companies: string[]
   industries: string[]
   tags: string[]
@@ -80,7 +81,7 @@ export default function LeadsPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
   const [selectedLeads, setSelectedLeads] = useState<string[]>([])
   const [filters, setFilters] = useState<FilterState>({
-    dateRange: {},
+    dateRange: undefined,
     companies: [],
     industries: [],
     tags: [],
@@ -217,8 +218,8 @@ export default function LeadsPage() {
       filters.industries.length === 0 || (lead.industry && filters.industries.includes(lead.industry))
 
     const matchesDateRange =
-      (!filters.dateRange.from || new Date(lead.createdAt) >= filters.dateRange.from) &&
-      (!filters.dateRange.to || new Date(lead.createdAt) <= filters.dateRange.to)
+      (!filters.dateRange?.from || new Date(lead.createdAt) >= filters.dateRange.from) &&
+      (!filters.dateRange?.to || new Date(lead.createdAt) <= filters.dateRange.to)
 
     return (
       matchesSearch &&
@@ -281,9 +282,7 @@ export default function LeadsPage() {
                   <Label>Date Range</Label>
                   <DateRangePicker
                     value={filters.dateRange}
-                    onChange={(range) =>
-                      setFilters({ ...filters, dateRange: range })
-                    }
+                    onChange={(range) => setFilters({ ...filters, dateRange: range })}
                   />
                 </div>
                 <div className="space-y-2">

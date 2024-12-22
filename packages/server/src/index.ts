@@ -1,6 +1,7 @@
 import fastify from 'fastify'
 import cors from '@fastify/cors'
 import { sdrRoutes } from './routes/sdr'
+import { webhookRoutes } from './routes/webhooks'
 import './workers/queueWorker'
 
 const server = fastify({
@@ -22,6 +23,7 @@ server.register(cors, {
 
 // Register routes
 server.register(sdrRoutes, { prefix: '/api/sdr' })
+server.register(webhookRoutes, { prefix: '/api/webhooks' })
 
 // Health check
 server.get('/health', async () => {

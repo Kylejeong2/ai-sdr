@@ -19,21 +19,42 @@ const apolloClient = axios.create({
   }
 })
 
+const exaLabsClient = axios.create({
+  baseURL: 'https://api.exalabs.ai',
+  headers: {
+    'Authorization': `Bearer ${process.env.EXALABS_API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+})
+
 export class EnrichmentService {
   private async enrichPersonalEmail(lead: Lead) {
     try {
       // Use browserbase to scrape LinkedIn
       const linkedInData = await this.scrapeLinkedIn(lead.email)
       
+      // Get ExaLabs data
+      const exaLabsData = await this.getExaLabsData(lead.email)
+      
+      // Get Apollo data for additional company info
+      const apolloData = await this.getApolloData(lead.email)
+      
+      // Combine all enrichment data
+      const enrichmentData = {
+        linkedin: linkedInData,
+        exaLabs: exaLabsData,
+        apollo: apolloData
+      }
+      
       // Update lead with enriched data
       return await prisma.lead.update({
         where: { id: lead.id },
         data: {
           linkedInUrl: linkedInData.profileUrl,
-          company: linkedInData.company,
-          title: linkedInData.title,
-          industry: linkedInData.industry,
-          enrichmentData: linkedInData,
+          company: linkedInData.company || apolloData.company,
+          title: linkedInData.title || apolloData.title,
+          industry: linkedInData.industry || apolloData.industry,
+          enrichmentData,
           status: 'ENRICHED'
         }
       })
@@ -191,6 +212,32 @@ export class EnrichmentService {
       }
     } catch (error) {
       console.error('Error getting Apollo data:', error)
+      throw error
+    }
+  }
+
+  private async getExaLabsData(email: string) {
+    try {
+      const { data } = await exaLabsClient.post('/v1/search', {
+        email,
+        enrich: true,
+        include_social: true
+      })
+
+      if (!data.results || data.results.length === 0) {
+        throw new Error('Person not found in ExaLabs')
+      }
+
+      const person = data.results[0]
+      return {
+        socialProfiles: person.social_profiles,
+        workHistory: person.work_history,
+        education: person.education,
+        skills: person.skills,
+        interests: person.interests
+      }
+    } catch (error) {
+      console.error('Error getting ExaLabs data:', error)
       throw error
     }
   }

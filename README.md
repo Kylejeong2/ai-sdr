@@ -1,4 +1,4 @@
-# Graham SDR
+# Graham
 
 An AI-powered SDR automation platform with lead detection, email outreach, and analytics.
 

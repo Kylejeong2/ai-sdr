@@ -69,7 +69,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <a href="/dashboard" className="flex items-center gap-2">
-                <span className="text-lg font-bold">GrahamSDR</span>
+                <span className="text-lg font-bold">Graham</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
