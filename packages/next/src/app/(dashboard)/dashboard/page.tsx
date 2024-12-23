@@ -29,13 +29,27 @@ export default function DashboardPage() {
 
   const stats = {
     totalLeads: leads.length,
-    activeCampaigns: leads.filter(l => l.emails.some(e => e.status === 'QUEUED')).length,
-    responseRate: leads.filter(l => l.emails.some(e => e.status === 'REPLIED')).length / leads.length * 100,
-    conversionRate: leads.filter(l => l.status === 'CONVERTED').length / leads.length * 100
+    activeCampaigns: leads.filter(l => l.emails?.some(e => e.status === 'QUEUED')).length,
+    responseRate: leads.filter(l => l.emails?.some(e => e.status === 'REPLIED')).length / (leads.length || 1) * 100,
+    conversionRate: leads.filter(l => l.status === 'CONVERTED').length / (leads.length || 1) * 100
   }
 
   if (loading) {
     return <div className="flex justify-center py-8">Loading...</div>
+  }
+
+  const getNewLeadsCount = () => {
+    const lastMonth = new Date()
+    lastMonth.setMonth(lastMonth.getMonth() - 1)
+    return leads.filter(l => new Date(l.createdAt) > lastMonth).length
+  }
+
+  const getActiveCampaignsThisWeek = () => {
+    const lastWeek = new Date()
+    lastWeek.setDate(lastWeek.getDate() - 7)
+    return leads.filter(l => 
+      l.emails?.some(e => new Date(e.createdAt) > lastWeek && e.status === 'QUEUED')
+    ).length
   }
 
   return (
@@ -56,13 +70,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalLeads}</div>
             <p className="text-xs text-muted-foreground">
-              +{leads.filter(l => {
-                const date = new Date(l.createdAt)
-                const now = new Date()
-                const lastMonth = new Date()
-                lastMonth.setMonth(now.getMonth() - 1)
-                return date > lastMonth
-              }).length} from last month
+              +{getNewLeadsCount()} from last month
             </p>
           </CardContent>
         </Card>
@@ -76,15 +84,7 @@ export default function DashboardPage() {
           <CardContent>
             <div className="text-2xl font-bold">{stats.activeCampaigns}</div>
             <p className="text-xs text-muted-foreground">
-              {leads.filter(l => 
-                l.emails.some(e => {
-                  const date = new Date(e.createdAt)
-                  const now = new Date()
-                  const lastWeek = new Date()
-                  lastWeek.setDate(now.getDate() - 7)
-                  return date > lastWeek
-                })
-              ).length} campaigns this week
+              {getActiveCampaignsThisWeek()} campaigns this week
             </p>
           </CardContent>
         </Card>
@@ -100,7 +100,15 @@ export default function DashboardPage() {
               {stats.responseRate.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
-              +5.2% from last month
+              +{((leads.filter(l => {
+                const lastMonth = new Date()
+                lastMonth.setMonth(lastMonth.getMonth() - 1)
+                return new Date(l.createdAt) > lastMonth && l.emails?.some(e => e.status === 'REPLIED')
+              }).length / (leads.filter(l => {
+                const lastMonth = new Date()
+                lastMonth.setMonth(lastMonth.getMonth() - 1)
+                return new Date(l.createdAt) > lastMonth
+              }).length || 1) * 100) - stats.responseRate).toFixed(1)}% from last month
             </p>
           </CardContent>
         </Card>
@@ -116,7 +124,15 @@ export default function DashboardPage() {
               {stats.conversionRate.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
-              +2.1% from last month
+              +{((leads.filter(l => {
+                const lastMonth = new Date()
+                lastMonth.setMonth(lastMonth.getMonth() - 1)
+                return new Date(l.createdAt) > lastMonth && l.status === 'CONVERTED'
+              }).length / (leads.filter(l => {
+                const lastMonth = new Date()
+                lastMonth.setMonth(lastMonth.getMonth() - 1)
+                return new Date(l.createdAt) > lastMonth
+              }).length || 1) * 100) - stats.conversionRate).toFixed(1)}% from last month
             </p>
           </CardContent>
         </Card>

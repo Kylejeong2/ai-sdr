@@ -17,7 +17,8 @@ import {
 import { Editor } from "@/components/editor"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Save, Eye, ArrowLeft } from "lucide-react"
-import { sdrApi, TeamMember, type EmailTemplate } from "@/lib/api"
+import type { TeamMember} from "@/lib/api";
+import { sdrApi, type EmailTemplate } from "@/lib/api"
 
 const VARIABLE_OPTIONS = [
   { label: "First Name", value: "{{firstName}}" },
@@ -33,6 +34,7 @@ export default function TemplateEditorPage() {
   const isNew = params.id === "new"
 
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [template, setTemplate] = useState<EmailTemplate>({
     id: "",
@@ -69,6 +71,7 @@ export default function TemplateEditorPage() {
         setTemplate(data)
       } catch (error) {
         console.error('Error fetching template:', error)
+        setError('Failed to load template')
       } finally {
         setLoading(false)
       }
@@ -77,27 +80,68 @@ export default function TemplateEditorPage() {
     fetchTemplate()
   }, [isNew, params.id])
 
+  const validateTemplate = () => {
+    if (!template.name.trim()) {
+      setError('Template name is required')
+      return false
+    }
+    if (!template.subject.trim()) {
+      setError('Subject line is required')
+      return false
+    }
+    if (!template.content.trim()) {
+      setError('Email content is required')
+      return false
+    }
+    return true
+  }
+
   const handleSave = async () => {
+    setError(null)
+    if (!validateTemplate()) return
+
     setSaving(true)
     try {
       if (isNew) {
-        await sdrApi.createTemplate(template)
+        const newTemplate = await sdrApi.createTemplate({
+          name: template.name,
+          subject: template.subject,
+          content: template.content,
+          variables: template.variables,
+          isShared: template.isShared
+        })
+        router.push(`/dashboard/templates/${newTemplate.id}`)
       } else {
-        await sdrApi.updateTemplate(template.id, template)
+        await sdrApi.updateTemplate(template.id, {
+          name: template.name,
+          subject: template.subject,
+          content: template.content,
+          variables: template.variables,
+          isShared: template.isShared
+        })
+        router.push("/dashboard/templates")
       }
-      router.push("/dashboard/templates")
     } catch (error) {
       console.error('Error saving template:', error)
+      setError('Failed to save template')
     } finally {
       setSaving(false)
     }
   }
 
   const insertVariable = (variable: string) => {
-    setTemplate({
-      ...template,
-      content: template.content + " " + variable,
-    })
+    if (!template.variables.includes(variable)) {
+      setTemplate({
+        ...template,
+        content: template.content + " " + variable,
+        variables: [...template.variables, variable.replace(/[{}]/g, '')]
+      })
+    } else {
+      setTemplate({
+        ...template,
+        content: template.content + " " + variable
+      })
+    }
   }
 
   if (loading) {
@@ -110,6 +154,11 @@ export default function TemplateEditorPage() {
 
   return (
     <div className="space-y-8">
+      {error && (
+        <div className="bg-destructive/15 text-destructive px-4 py-2 rounded-md">
+          {error}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button

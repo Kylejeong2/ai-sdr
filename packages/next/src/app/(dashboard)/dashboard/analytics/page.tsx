@@ -4,20 +4,26 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LineChart, BarChart, PieChart } from "lucide-react"
-import { sdrApi, type Lead } from "@/lib/api"
+import { sdrApi, type Lead, type TeamMember } from "@/lib/api"
 import { EmailMetrics } from "@/components/analytics/email-metrics"
 import { LeadMetrics } from "@/components/analytics/lead-metrics"
 import { UsageMetrics } from "@/components/analytics/usage-metrics"
+import { differenceInDays } from "date-fns"
 
 export default function AnalyticsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const leadsData = await sdrApi.getLeads()
+        const [leadsData, teamData] = await Promise.all([
+          sdrApi.getLeads(),
+          sdrApi.getTeamMembers()
+        ])
         setLeads(leadsData)
+        setTeamMembers(teamData)
       } catch (error) {
         console.error('Error fetching data:', error)
       } finally {
@@ -28,9 +34,88 @@ export default function AnalyticsPage() {
     fetchData()
   }, [])
 
+  const calculateEmailMetrics = () => {
+    const totalEmails = leads.reduce((acc, lead) => acc + (lead.emails?.length || 0), 0)
+    const openedEmails = leads.reduce((acc, lead) => 
+      acc + (lead.emails?.filter(e => e.openedAt)?.length || 0), 0)
+    const clickedEmails = leads.reduce((acc, lead) => 
+      acc + (lead.emails?.filter(e => e.clickedAt)?.length || 0), 0)
+    const repliedEmails = leads.reduce((acc, lead) => 
+      acc + (lead.emails?.filter(e => e.repliedAt)?.length || 0), 0)
+
+    return {
+      totalEmails,
+      openRate: totalEmails > 0 ? (openedEmails / totalEmails * 100) : 0,
+      clickRate: totalEmails > 0 ? (clickedEmails / totalEmails * 100) : 0,
+      replyRate: totalEmails > 0 ? (repliedEmails / totalEmails * 100) : 0
+    }
+  }
+
+  const calculateLeadMetrics = () => {
+    const convertedLeads = leads.filter(l => l.status === 'CONVERTED')
+    const conversionRate = leads.length > 0 ? (convertedLeads.length / leads.length * 100) : 0
+
+    // Calculate average time to convert
+    const conversionTimes = convertedLeads.map(lead => {
+      const firstEmail = lead.emails?.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )[0]
+      if (!firstEmail) return null
+      return differenceInDays(
+        new Date(lead.updatedAt), // conversion date
+        new Date(firstEmail.createdAt) // first contact date
+      )
+    }).filter(Boolean) as number[]
+
+    const avgTimeToConvert = conversionTimes.length > 0 
+      ? conversionTimes.reduce((acc, time) => acc + time, 0) / conversionTimes.length
+      : 0
+
+    // Calculate lead quality score based on engagement
+    const qualityScores = leads.map(lead => {
+      let score = 0
+      if (lead.emails?.some(e => e.openedAt)) score += 2
+      if (lead.emails?.some(e => e.clickedAt)) score += 3
+      if (lead.emails?.some(e => e.repliedAt)) score += 5
+      return score
+    })
+
+    const avgQualityScore = qualityScores.length > 0
+      ? (qualityScores.reduce((acc, score) => acc + score, 0) / qualityScores.length)
+      : 0
+
+    return {
+      totalLeads: leads.length,
+      conversionRate,
+      avgTimeToConvert,
+      qualityScore: (avgQualityScore / 10) * 10 // Convert to 10-point scale
+    }
+  }
+
+  const calculateUsageMetrics = () => {
+    const emailCredits = leads.reduce((acc, lead) => acc + (lead.emails?.length || 0), 0)
+    const storageUsed = Math.round(
+      leads.reduce((acc, lead) => 
+        acc + 
+        JSON.stringify(lead).length + 
+        (lead.emails?.reduce((sum, email) => sum + JSON.stringify(email).length, 0) || 0)
+      , 0) / 1024 / 1024 // Convert to MB
+    )
+
+    return {
+      emailCredits,
+      storageUsed,
+      teamMembers: teamMembers.length
+    }
+  }
+
   if (loading) {
     return <div className="flex justify-center py-8">Loading...</div>
   }
+
+  const emailMetrics = calculateEmailMetrics()
+  const leadMetrics = calculateLeadMetrics()
+  const usageMetrics = calculateUsageMetrics()
 
   return (
     <div className="space-y-8">
@@ -64,7 +149,7 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {leads.reduce((acc, lead) => acc + lead.emails.length, 0)}
+                  {emailMetrics.totalEmails}
                 </div>
               </CardContent>
             </Card>
@@ -76,9 +161,7 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(leads.reduce((acc, lead) => 
-                    acc + lead.emails.filter(e => e.openedAt).length, 0
-                  ) / leads.reduce((acc, lead) => acc + lead.emails.length, 0) * 100).toFixed(1)}%
+                  {emailMetrics.openRate.toFixed(1)}%
                 </div>
               </CardContent>
             </Card>
@@ -90,9 +173,7 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(leads.reduce((acc, lead) => 
-                    acc + lead.emails.filter(e => e.clickedAt).length, 0
-                  ) / leads.reduce((acc, lead) => acc + lead.emails.length, 0) * 100).toFixed(1)}%
+                  {emailMetrics.clickRate.toFixed(1)}%
                 </div>
               </CardContent>
             </Card>
@@ -104,9 +185,7 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(leads.reduce((acc, lead) => 
-                    acc + lead.emails.filter(e => e.repliedAt).length, 0
-                  ) / leads.reduce((acc, lead) => acc + lead.emails.length, 0) * 100).toFixed(1)}%
+                  {emailMetrics.replyRate.toFixed(1)}%
                 </div>
               </CardContent>
             </Card>
@@ -124,7 +203,7 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{leads.length}</div>
+                <div className="text-2xl font-bold">{leadMetrics.totalLeads}</div>
               </CardContent>
             </Card>
             <Card>
@@ -135,7 +214,7 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {(leads.filter(l => l.status === 'CONVERTED').length / leads.length * 100).toFixed(1)}%
+                  {leadMetrics.conversionRate.toFixed(1)}%
                 </div>
               </CardContent>
             </Card>
@@ -146,7 +225,9 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">4.2 days</div>
+                <div className="text-2xl font-bold">
+                  {leadMetrics.avgTimeToConvert.toFixed(1)} days
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -156,7 +237,9 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">8.4/10</div>
+                <div className="text-2xl font-bold">
+                  {leadMetrics.qualityScore.toFixed(1)}/10
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -174,10 +257,10 @@ export default function AnalyticsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {leads.reduce((acc, lead) => acc + lead.emails.length, 0)}/1000
+                  {usageMetrics.emailCredits}/1000
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Resets in 12 days
+                  Monthly quota
                 </p>
               </CardContent>
             </Card>
@@ -188,9 +271,9 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">2,451/5,000</div>
+                <div className="text-2xl font-bold">-/5,000</div>
                 <p className="text-xs text-muted-foreground">
-                  Resets in 12 days
+                  Daily quota
                 </p>
               </CardContent>
             </Card>
@@ -201,7 +284,7 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">1.2GB/5GB</div>
+                <div className="text-2xl font-bold">{usageMetrics.storageUsed}MB/5GB</div>
               </CardContent>
             </Card>
             <Card>
@@ -211,7 +294,7 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">3/5</div>
+                <div className="text-2xl font-bold">{usageMetrics.teamMembers}/5</div>
               </CardContent>
             </Card>
           </div>

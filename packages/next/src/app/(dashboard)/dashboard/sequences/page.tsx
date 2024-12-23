@@ -14,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Plus,
   GripVertical,
   Mail,
   Clock,
@@ -117,19 +116,47 @@ export default function SequencesPage() {
   const handleSave = async () => {
     try {
       if (selectedSequence.id === "new") {
-        const newSequence = await sdrApi.createSequence(selectedSequence)
+        const newSequence = await sdrApi.createSequence({
+          name: selectedSequence.name,
+          description: selectedSequence.description,
+          steps: selectedSequence.steps,
+          isActive: selectedSequence.isActive
+        })
         setSequences([...sequences, newSequence])
         setSelectedSequence(newSequence)
       } else {
-        await sdrApi.updateSequence(selectedSequence.id, selectedSequence)
+        const updatedSequence = await sdrApi.updateSequence(selectedSequence.id, {
+          name: selectedSequence.name,
+          description: selectedSequence.description,
+          steps: selectedSequence.steps,
+          isActive: selectedSequence.isActive
+        })
         setSequences(
           sequences.map((seq) =>
-            seq.id === selectedSequence.id ? selectedSequence : seq
+            seq.id === selectedSequence.id ? updatedSequence : seq
           )
         )
+        setSelectedSequence(updatedSequence)
       }
     } catch (error) {
       console.error('Error saving sequence:', error)
+    }
+  }
+
+  const toggleSequenceStatus = async () => {
+    const newStatus = !selectedSequence.isActive
+    try {
+      const updatedSequence = await sdrApi.updateSequence(selectedSequence.id, {
+        isActive: newStatus
+      })
+      setSelectedSequence(updatedSequence)
+      setSequences(
+        sequences.map((seq) =>
+          seq.id === selectedSequence.id ? updatedSequence : seq
+        )
+      )
+    } catch (error) {
+      console.error('Error updating sequence status:', error)
     }
   }
 
@@ -333,12 +360,8 @@ export default function SequencesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setSelectedSequence({
-                        ...selectedSequence,
-                        isActive: !selectedSequence.isActive,
-                      })
-                    }
+                    onClick={toggleSequenceStatus}
+                    disabled={selectedSequence.id === "new"}
                   >
                     {selectedSequence.isActive ? (
                       <>

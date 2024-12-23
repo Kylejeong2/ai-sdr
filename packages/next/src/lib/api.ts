@@ -39,6 +39,8 @@ export interface Email {
   createdAt: string
   updatedAt: string
   metadata?: any
+  lead?: Lead
+  template?: EmailTemplate
   variant?: string
   testGroup?: string
   sequence?: Sequence
@@ -449,6 +451,11 @@ export const sdrApi = {
       })
     }
     const { data } = await api.get<Activity[]>(`/sdr/activities?${queryParams}`)
+    return data
+  },
+
+  getEmails: async (params?: { from?: string; limit?: number }) => {
+    const { data } = await api.get<Email[]>('/sdr/emails', { params })
     return data
   },
 } 

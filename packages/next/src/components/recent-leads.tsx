@@ -8,10 +8,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge, badgeVariants } from "@/components/ui/badge"
+import type { badgeVariants } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { type Lead } from "@/lib/api"
-import { VariantProps } from "class-variance-authority"
+import type { VariantProps } from "class-variance-authority"
 
 interface RecentLeadsProps {
   leads: Lead[]
@@ -25,11 +26,15 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
       case 'ENRICHED':
         return 'secondary';
       case 'EMAIL_QUEUED':
+        return 'warning';
       case 'EMAIL_SENT':
-        return 'destructive';
+        return 'warning';
       case 'RESPONDED':
+        return 'success';
       case 'CONVERTED':
-        return 'secondary';
+        return 'success';
+      case 'DEAD':
+        return 'destructive';
       default:
         return 'secondary';
     }
@@ -50,13 +55,13 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
             <TableCell className="flex items-center gap-2">
               <Avatar className="h-8 w-8">
                 <AvatarFallback>
-                  {lead.firstName?.[0]}
-                  {lead.lastName?.[0]}
+                  {(lead.firstName?.[0] || '').toUpperCase()}
+                  {(lead.lastName?.[0] || '').toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col">
                 <span className="font-medium">
-                  {lead.firstName} {lead.lastName}
+                  {lead.firstName || ''} {lead.lastName || ''}
                 </span>
                 <span className="text-sm text-muted-foreground">
                   {lead.email}
@@ -65,15 +70,15 @@ export function RecentLeads({ leads }: RecentLeadsProps) {
             </TableCell>
             <TableCell>
               <div className="flex flex-col">
-                <span className="font-medium">{lead.company}</span>
+                <span className="font-medium">{lead.company || 'Unknown Company'}</span>
                 <span className="text-sm text-muted-foreground">
-                  {lead.title}
+                  {lead.title || 'Unknown Title'}
                 </span>
               </div>
             </TableCell>
             <TableCell>
               <Badge variant={getStatusColor(lead.status)}>
-                {lead.status}
+                {lead.status.replace(/_/g, ' ')}
               </Badge>
             </TableCell>
           </TableRow>

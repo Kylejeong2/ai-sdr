@@ -58,13 +58,25 @@ export function Overview({ data }: OverviewProps) {
           const end = endOfMonth(month)
           return data.filter((lead: Lead) => {
             const date = new Date(lead.createdAt)
-            return date >= start && date <= end
+            return date >= start && date <= end && lead.status === 'NEW'
           }).length
         }),
         backgroundColor: "rgba(59, 130, 246, 0.5)",
       },
       {
-        label: "Conversions",
+        label: "Enriched",
+        data: months.map((month: Date) => {
+          const start = startOfMonth(month)
+          const end = endOfMonth(month)
+          return data.filter((lead: Lead) => {
+            const date = new Date(lead.createdAt)
+            return date >= start && date <= end && lead.status === 'ENRICHED'
+          }).length
+        }),
+        backgroundColor: "rgba(16, 185, 129, 0.5)",
+      },
+      {
+        label: "Converted",
         data: months.map((month: Date) => {
           const start = startOfMonth(month)
           const end = endOfMonth(month)
@@ -73,7 +85,7 @@ export function Overview({ data }: OverviewProps) {
             return date >= start && date <= end && lead.status === 'CONVERTED'
           }).length
         }),
-        backgroundColor: "rgba(16, 185, 129, 0.5)",
+        backgroundColor: "rgba(244, 63, 94, 0.5)",
       },
     ],
   }

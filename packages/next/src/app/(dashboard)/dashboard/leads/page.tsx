@@ -11,7 +11,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge, badgeVariants } from "@/components/ui/badge"
+import type { badgeVariants } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -54,10 +55,10 @@ import {
 } from "lucide-react"
 import { sdrApi, type Lead } from "@/lib/api"
 import { format } from "date-fns"
-import { VariantProps } from "class-variance-authority"
+import type { VariantProps } from "class-variance-authority"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { Label } from "@/components/ui/label"
-import { DateRange } from "react-day-picker"
+import type { DateRange } from "react-day-picker"
 
 type SortField = "name" | "company" | "status" | "type" | "createdAt"
 type SortOrder = "asc" | "desc"
@@ -76,7 +77,6 @@ export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
   const [sortField, setSortField] = useState<SortField>("createdAt")
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc")
   const [selectedLeads, setSelectedLeads] = useState<string[]>([])
@@ -108,22 +108,35 @@ export default function LeadsPage() {
   const handleBulkAction = async (action: string) => {
     if (selectedLeads.length === 0) return
 
+    let csv: string
+    
     switch (action) {
       case 'tag':
-        // Implement tag selection and application
+        // Will be implemented when tag selection UI is added
         break
       case 'assign':
-        // Implement team member assignment
+        // Will be implemented when team member selection UI is added
         break
       case 'email':
-        // Implement bulk email sending
+        try {
+          await sdrApi.bulkUpdateLeads(selectedLeads, { status: 'EMAIL_QUEUED' })
+          const updatedLeads = await sdrApi.getLeads()
+          setLeads(updatedLeads)
+        } catch (error) {
+          console.error('Error queueing emails:', error)
+        }
         break
       case 'delete':
-        // Implement bulk deletion with confirmation
+        try {
+          await sdrApi.bulkDeleteLeads(selectedLeads)
+          const updatedLeads = await sdrApi.getLeads()
+          setLeads(updatedLeads)
+        } catch (error) {
+          console.error('Error deleting leads:', error)
+        }
         break
       case 'export':
-        // Generate and download CSV
-        const csv = generateCSV(leads.filter(l => selectedLeads.includes(l.id)))
+        csv = generateCSV(leads.filter(l => selectedLeads.includes(l.id)))
         downloadCSV(csv, 'leads-export.csv')
         break
     }
