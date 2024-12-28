@@ -108,32 +108,14 @@ model EmailTemplate {
   createdById String
 }
 
-model EnrichmentQueue {
-  id          String   @id @default(cuid())
-  leadId      String   @unique
-  attempts    Int      @default(0)
-  lastAttempt DateTime?
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-model EmailQueue {
-  id          String   @id @default(cuid())
-  emailId     String   @unique
-  attempts    Int      @default(0)
-  lastAttempt DateTime?
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
 model Team {
   id          String       @id @default(cuid())
   name        String
   members     TeamMember[]
+  users       User[]       // Users that signed up for this team
   templates   EmailTemplate[]
   sequences   Sequence[]
+  clerkConfig ClerkConfig?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -150,6 +132,26 @@ model TeamMember {
   comments    Comment[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+}
+
+model User {
+  id          String      @id @default(cuid())
+  email       String      @unique
+  clerkId     String?     @unique
+  firstName   String?
+  lastName    String?
+  teamId      String      // Team they signed up for
+  team        Team        @relation(fields: [teamId], references: [id])
+  enrichmentData Json?    // Store enrichment data here
+  status      String      @default("NEW") // Track user status (NEW, ENRICHED, CONTACTED)
+  role        String      @default("MEMBER")
+  
+  // Clerk organization they belong to
+  clerkOrgId  String?
+  clerkOrg    ClerkManagedOrg? @relation(fields: [clerkOrgId], references: [id])
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model Comment {
@@ -243,4 +245,43 @@ model BlogPost {
   published  Boolean  @default(false)
   coverImage String?  // url to be the cover image of the blog post
   createdAt  DateTime @default(now())
+}
+
+model ClerkConfig {
+  id                  String   @id @default(cuid())
+  teamId             String   @unique
+  team               Team     @relation(fields: [teamId], references: [id])
+  publishableKey     String
+  secretKey          String
+  webhookSecret      String
+  organizationId     String
+  organizationName   String
+  organizationSlug   String
+  organizationMetadata Json?
+  environment        String   @default("test")
+  webhookEvents      String[] @default([])
+  lastWebhookReceived DateTime?
+  webhookStatus      String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  managedOrganizations ClerkManagedOrg[]
+}
+
+model ClerkManagedOrg {
+  id              String   @id @default(cuid())
+  clerkConfigId   String
+  clerkConfig     ClerkConfig @relation(fields: [clerkConfigId], references: [id])
+  organizationId  String   // Clerk organization ID
+  name            String   // Organization name
+  slug            String   // Organization slug
+  metadata        Json?    // Additional org metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Track users from this organization
+  users          User[]
+
+  @@unique([clerkConfigId, organizationId])
 }

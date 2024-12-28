@@ -1,150 +1,165 @@
 'use client'
 
-import { ChevronDown, CreditCard, Home, Search, Settings, User2, BarChart2, PhoneCall, LineChart, Users, Mail, Settings2, HelpCircle, Plus } from "lucide-react"
-import { UserButton, useAuth, useUser } from "@clerk/nextjs"
-import { useRouter, usePathname } from "next/navigation"
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { OrganizationSwitcher } from '@clerk/nextjs'
+import { cn } from '@/lib/utils'
+import {
+  BarChart3,
+  Users,
+  Settings,
+  Mail,
+  MessageSquare,
+  CalendarDays,
+  LayoutDashboard,
+  FileText,
+  Database,
+  Inbox,
+  UserPlus,
+  Building2
+} from 'lucide-react'
 
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Button } from "@/components/ui/button"
-
-// Menu items for main navigation
 const mainNavItems = [
   {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: Home,
+    title: 'Dashboard',
+    href: '/dashboard',
+    icon: LayoutDashboard
   },
   {
-    title: "Leads",
-    href: "/dashboard/leads",
-    icon: Users,
+    title: 'Leads',
+    href: '/dashboard/leads',
+    icon: UserPlus
   },
   {
-    title: "Campaigns",
-    href: "/dashboard/campaigns",
-    icon: Mail,
+    title: 'Analytics',
+    href: '/dashboard/analytics',
+    icon: BarChart3
   },
   {
-    title: "Analytics",
-    href: "/dashboard/analytics",
-    icon: BarChart2,
+    title: 'Users',
+    href: '/dashboard/users',
+    icon: Users
   },
+  {
+    title: 'Campaigns',
+    href: '/dashboard/campaigns',
+    icon: Mail
+  },
+  {
+    title: 'Templates',
+    href: '/dashboard/templates',
+    icon: FileText
+  },
+  {
+    title: 'Sequences',
+    href: '/dashboard/sequences',
+    icon: MessageSquare
+  },
+  {
+    title: 'Calendar',
+    href: '/dashboard/calendar',
+    icon: CalendarDays
+  },
+  {
+    title: 'Data',
+    href: '/dashboard/data',
+    icon: Database
+  },
+  {
+    title: 'Inbox',
+    href: '/dashboard/inbox',
+    icon: Inbox
+  }
 ]
 
-// Menu items for settings
 const settingsNavItems = [
   {
-    title: "Settings",
-    href: "/dashboard/settings",
-    icon: Settings2,
+    title: 'Team',
+    href: '/dashboard/settings/team',
+    icon: Users
   },
   {
-    title: "Profile",
-    href: "/dashboard/profile",
-    icon: User2,
+    title: 'Clerk',
+    href: '/dashboard/settings/clerk',
+    icon: Settings
   },
   {
-    title: "Billing",
-    href: "/dashboard/billing",
-    icon: CreditCard,
-  },
-  {
-    title: "Help",
-    href: "/dashboard/help",
-    icon: HelpCircle,
-  },
+    title: 'Organization Settings',
+    href: '/dashboard/settings/organization',
+    icon: Building2
+  }
 ]
 
 export function AppSidebar() {
-  const { userId } = useAuth()
-  const { user } = useUser()
-  const router = useRouter()
   const pathname = usePathname()
 
   return (
-    <Sidebar>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <a href="/dashboard" className="flex items-center gap-2">
-                <span className="text-lg font-bold">Graham</span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <div className="flex flex-col h-full bg-gray-900 border-r border-gray-800 w-64">
+      {/* Organization Switcher */}
+      <div className="p-4 border-b border-gray-800">
+        <OrganizationSwitcher 
+          appearance={{
+            baseTheme: undefined,
+            elements: {
+              rootBox: 'w-full',
+              organizationSwitcherTrigger: 'w-full bg-gray-800 p-2 rounded-lg hover:bg-gray-700 transition-colors duration-200 text-white'
+            }
+          }}
+        />
+      </div>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Overview</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={pathname === item.href ? "bg-accent" : ""}
-                  >
-                    <a href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      {/* Main Navigation */}
+      <div className="flex-1 overflow-y-auto py-4">
+        <nav className="space-y-1 px-3">
+          {mainNavItems.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
+                  isActive 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.title}
+              </Link>
+            )
+          })}
+        </nav>
+      </div>
 
-        <SidebarGroup>
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {settingsNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    className={pathname === item.href ? "bg-accent" : ""}
-                  >
-                    <a href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <Button variant="outline" className="w-full justify-start">
-                <Plus className="mr-2 h-4 w-4" />
-                New Campaign
-              </Button>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-
-          <SidebarMenuItem>
-            <SidebarMenuButton className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <User2 className="h-4 w-4" />
-                <div className="flex flex-col">
-                  <span>{user?.emailAddresses[0]?.emailAddress ?? 'Guest'}</span>
-                  <span className="text-xs text-muted-foreground">Pro Plan</span>
-                </div>
-              </div>
-              <UserButton afterSignOutUrl="/sign-in" />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+      {/* Settings Navigation */}
+      <div className="border-t border-gray-800 py-4">
+        <div className="px-3 mb-2">
+          <h2 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Settings
+          </h2>
+        </div>
+        <nav className="space-y-1 px-3">
+          {settingsNavItems.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200',
+                  isActive 
+                    ? 'bg-blue-600 text-white' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                {item.title}
+              </Link>
+            )
+          })}
+        </nav>
+      </div>
+    </div>
   )
 }

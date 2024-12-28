@@ -14,10 +14,11 @@ export class EmailGenerationService {
       const prompt = this.buildPrompt(lead, template)
       
       const completion = await openai.chat.completions.create({
-        model: "gpt-4",
+        model: "gpt-4o",
         messages: [{
           role: "system",
-          content: "You are an expert SDR who writes highly personalized and effective sales emails. Your emails are concise, engaging, and focused on value proposition."
+          content: `You are an expert SDR who writes highly personalized and effective sales emails.
+           Your emails are concise, engaging, and focused on value proposition.`
         }, {
           role: "user",
           content: prompt

@@ -7,7 +7,7 @@ const emailService = new EmailGenerationService()
 async function processQueues() {
   try {
     // Process enrichment queue
-    await enrichmentService.processEnrichmentQueue()
+    await enrichmentService.processEnrichment()
     
     // Process email queue
     await emailService.processEmailQueue()
@@ -19,5 +19,4 @@ async function processQueues() {
 // Process queues every minute
 setInterval(processQueues, 60 * 1000)
 
-// Initial process
 processQueues() 

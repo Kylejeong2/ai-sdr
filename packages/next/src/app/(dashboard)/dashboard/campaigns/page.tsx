@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useTeam } from "@/providers/team-provider"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -12,253 +13,146 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash } from "lucide-react"
-import { sdrApi, type EmailTemplate, type Email } from "@/lib/api"
-import { format, startOfToday, endOfToday, subDays } from "date-fns"
-import { useRouter } from "next/navigation"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { Plus, Mail, Users, BarChart } from "lucide-react"
+
+interface Campaign {
+  id: string
+  name: string
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED'
+  leads: number
+  sent: number
+  opened: number
+  replied: number
+  createdAt: string
+}
 
 export default function CampaignsPage() {
-  const router = useRouter()
-  const [templates, setTemplates] = useState<EmailTemplate[]>([])
-  const [recentEmails, setRecentEmails] = useState<Email[]>([])
-  const [loading, setLoading] = useState(true)
-  const [templateToDelete, setTemplateToDelete] = useState<string | null>(null)
+  const { team } = useTeam()
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchData = async () => {
+    async function loadCampaigns() {
+      if (!team?.id) return
+
       try {
-        const [templatesData, emailsData] = await Promise.all([
-          sdrApi.getTemplates(),
-          sdrApi.getEmails({ 
-            from: subDays(new Date(), 7).toISOString(),
-            limit: 10 
-          })
-        ])
-        setTemplates(templatesData)
-        setRecentEmails(emailsData)
+        const response = await fetch(`/api/campaigns?teamId=${team.id}`)
+        if (!response.ok) throw new Error('Failed to load campaigns')
+        
+        const data = await response.json()
+        setCampaigns(data)
       } catch (error) {
-        console.error('Error fetching data:', error)
+        console.error('Failed to load campaigns:', error)
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
-    fetchData()
-  }, [])
+    loadCampaigns()
+  }, [team?.id])
 
-  const getEmailStats = () => {
-    const today = startOfToday()
-    const todayEnd = endOfToday()
-    
-    const todayEmails = recentEmails.filter(
-      email => new Date(email.createdAt) >= today && new Date(email.createdAt) <= todayEnd
-    )
-
-    const openRate = recentEmails.length > 0 
-      ? (recentEmails.filter(e => e.openedAt).length / recentEmails.length * 100)
-      : 0
-
-    const responseRate = recentEmails.length > 0
-      ? (recentEmails.filter(e => e.repliedAt).length / recentEmails.length * 100)
-      : 0
-
-    return {
-      sentToday: todayEmails.length,
-      openRate,
-      responseRate
+  const getStatusColor = (status: Campaign['status']) => {
+    switch (status) {
+      case 'ACTIVE':
+        return 'bg-green-500/10 text-green-500'
+      case 'PAUSED':
+        return 'bg-yellow-500/10 text-yellow-500'
+      case 'COMPLETED':
+        return 'bg-blue-500/10 text-blue-500'
+      default:
+        return 'bg-gray-500/10 text-gray-500'
     }
   }
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    try {
-      await sdrApi.deleteTemplate(templateId)
-      setTemplates(templates.filter(t => t.id !== templateId))
-      setTemplateToDelete(null)
-    } catch (error) {
-      console.error('Error deleting template:', error)
-    }
+  if (isLoading) {
+    return <div>Loading campaigns...</div>
   }
-
-  const stats = getEmailStats()
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">Email Campaigns</h2>
-        <Button onClick={() => router.push('/dashboard/templates/new')}>
-          <Plus className="mr-2 h-4 w-4" /> New Template
+    <div className="p-8 space-y-8">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Campaigns</h1>
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="h-4 w-4 mr-2" />
+          New Campaign
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Total Templates
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{templates.length}</div>
-          </CardContent>
+      {/* Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-full bg-blue-500/10">
+              <Mail className="h-6 w-6 text-blue-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-400">Active Campaigns</h3>
+              <p className="text-2xl font-bold mt-1">
+                {campaigns.filter(c => c.status === 'ACTIVE').length}
+              </p>
+            </div>
+          </div>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Emails Sent Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.sentToday}</div>
-          </CardContent>
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-full bg-green-500/10">
+              <Users className="h-6 w-6 text-green-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-400">Total Leads</h3>
+              <p className="text-2xl font-bold mt-1">
+                {campaigns.reduce((acc, c) => acc + c.leads, 0)}
+              </p>
+            </div>
+          </div>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Open Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.openRate.toFixed(1)}%</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
-              Response Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.responseRate.toFixed(1)}%</div>
-          </CardContent>
+        <Card className="p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-full bg-purple-500/10">
+              <BarChart className="h-6 w-6 text-purple-500" />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-400">Reply Rate</h3>
+              <p className="text-2xl font-bold mt-1">
+                {campaigns.reduce((acc, c) => acc + c.replied, 0) / campaigns.reduce((acc, c) => acc + c.sent, 0) * 100}%
+              </p>
+            </div>
+          </div>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Email Templates</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex justify-center py-8">Loading...</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Variables</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {templates.map((template) => (
-                  <TableRow key={template.id}>
-                    <TableCell className="font-medium">
-                      {template.name}
-                    </TableCell>
-                    <TableCell>{template.subject}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        {template.variables.map((variable) => (
-                          <Badge key={variable} variant="secondary">
-                            {variable}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {format(new Date(template.createdAt), 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => router.push(`/dashboard/templates/${template.id}`)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <AlertDialog open={templateToDelete === template.id} onOpenChange={(open) => !open && setTemplateToDelete(null)}>
-                          <AlertDialogTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="text-destructive"
-                              onClick={() => setTemplateToDelete(template.id)}
-                            >
-                              <Trash className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Template</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete this template? This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction 
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                onClick={() => handleDeleteTemplate(template.id)}
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Emails</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Recipient</TableHead>
-                <TableHead>Template</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Sent</TableHead>
+      {/* Campaigns Table */}
+      <Card className="p-6">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Campaign Name</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Leads</TableHead>
+              <TableHead>Sent</TableHead>
+              <TableHead>Opened</TableHead>
+              <TableHead>Replied</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {campaigns.map((campaign) => (
+              <TableRow key={campaign.id}>
+                <TableCell className="font-medium">{campaign.name}</TableCell>
+                <TableCell>
+                  <Badge className={getStatusColor(campaign.status)}>
+                    {campaign.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>{campaign.leads}</TableCell>
+                <TableCell>{campaign.sent}</TableCell>
+                <TableCell>{campaign.opened}</TableCell>
+                <TableCell>{campaign.replied}</TableCell>
+                <TableCell>{new Date(campaign.createdAt).toLocaleDateString()}</TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {recentEmails.map((email) => (
-                <TableRow key={email.id}>
-                  <TableCell>{email.lead?.email || 'Unknown'}</TableCell>
-                  <TableCell>{email.template?.name || 'Custom Email'}</TableCell>
-                  <TableCell>
-                    <Badge variant={email.repliedAt ? 'success' : email.openedAt ? 'secondary' : 'default'}>
-                      {email.repliedAt ? 'Replied' : email.openedAt ? 'Opened' : 'Sent'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{format(new Date(email.createdAt), 'MMM d, h:mm a')}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+            ))}
+          </TableBody>
+        </Table>
       </Card>
     </div>
   )

@@ -1,98 +1,111 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { prisma } from '@graham/db'
-import { LeadDetectionService } from '../services/leadDetection'
+// import { LeadDetectionService } from '../services/leadDetection'
 import { EmailGenerationService } from '../services/emailGeneration'
 import { validateEmail } from '../utils/emailUtils'
+import { z } from 'zod'
+import { Client } from '@upstash/qstash'
 
-const leadDetectionService = new LeadDetectionService()
+const qstash = new Client({
+  token: process.env.QSTASH_TOKEN!
+})
+
+// const leadDetectionService = new LeadDetectionService()
 const emailService = new EmailGenerationService()
 
+// const EmailTypeEnum = z.enum(['PERSONAL', 'COMPANY'])
+// const LeadStatusEnum = z.enum(['NEW', 'ENRICHED', 'EMAIL_QUEUED', 'EMAIL_SENT', 'RESPONDED', 'CONVERTED', 'DEAD'])
+// const EmailStatusEnum = z.enum(['DRAFT', 'QUEUED', 'SENT', 'OPENED', 'CLICKED', 'REPLIED'])
+
+const leadSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  status: z.string(),
+  emailType: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+})
+
+const emailTemplateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  subject: z.string(),
+  content: z.string(),
+  variables: z.array(z.string()),
+  createdAt: z.string(),
+  updatedAt: z.string()
+})
+
+const signupSchema = z.object({
+  email: z.string(),
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  teamId: z.string()
+})
+
+const emailSchema = z.object({
+  id: z.string(),
+  subject: z.string(),
+  content: z.string(),
+  status: z.string(),
+  createdAt: z.string()
+})
+
+const leadWithEmailsSchema = leadSchema.extend({
+  emails: z.array(emailSchema)
+})
+
 export const sdrRoutes: FastifyPluginAsync = async (fastify) => {
-  // Schema definitions
-  const leadSchema = {
-    type: 'object',
-    properties: {
-      id: { type: 'string' },
-      email: { type: 'string' },
-      firstName: { type: 'string', nullable: true },
-      lastName: { type: 'string', nullable: true },
-      status: { type: 'string' },
-      emailType: { type: 'string' },
-      createdAt: { type: 'string' },
-      updatedAt: { type: 'string' }
-    }
-  }
-
-  const emailTemplateSchema = {
-    type: 'object',
-    properties: {
-      id: { type: 'string' },
-      name: { type: 'string' },
-      subject: { type: 'string' },
-      content: { type: 'string' },
-      variables: { type: 'array', items: { type: 'string' } },
-      createdAt: { type: 'string' },
-      updatedAt: { type: 'string' }
-    }
-  }
-
   // Handle new sign-up
   fastify.post('/signup', {
     schema: {
-      body: {
-        type: 'object',
-        required: ['email'],
-        properties: {
-          email: { type: 'string' },
-          firstName: { type: 'string' },
-          lastName: { type: 'string' }
-        }
-      },
-      response: {
-        200: leadSchema
-      }
+      body: signupSchema
     }
   }, async (request, reply) => {
-    const { email, firstName, lastName } = request.body as any
+    const { email, firstName, lastName, teamId } = signupSchema.parse(request.body)
 
     if (!validateEmail(email)) {
       return reply.code(400).send({ error: 'Invalid email address' })
     }
 
-    const lead = await leadDetectionService.handleNewSignup(email, firstName, lastName)
-    return lead
+    const user = await prisma.user.create({
+      data: {
+        email,
+        firstName,
+        lastName,
+        teamId,
+      },
+      include: {
+        team: true
+      }
+    })
+
+    // Queue enrichment job
+    await qstash.publishJSON({
+      url: `${process.env.API_URL}/api/webhook/enrich`,
+      body: {
+        userId: user.id,
+        teamId: user.teamId,
+        metadata: {
+          signupDate: user.createdAt,
+          source: 'signup_form'
+        }
+      },
+      // Retry up to 3 times with exponential backoff
+      retries: 3
+    })
+
+    return user
   })
 
   // Get lead status
   fastify.get('/lead/:id', {
     schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string' }
-        }
-      },
+      params: z.object({ id: z.string() }),
       response: {
-        200: {
-          ...leadSchema,
-          properties: {
-            ...leadSchema.properties,
-            emails: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'string' },
-                  subject: { type: 'string' },
-                  content: { type: 'string' },
-                  status: { type: 'string' },
-                  createdAt: { type: 'string' }
-                }
-              }
-            }
-          }
-        }
+        200: z.object(leadWithEmailsSchema.shape)
       }
     }
   }, async (request, reply) => {
@@ -118,10 +131,7 @@ export const sdrRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/leads', {
     schema: {
       response: {
-        200: {
-          type: 'array',
-          items: leadSchema
-        }
+        200: z.array(leadWithEmailsSchema)
       }
     }
   }, async () => {
@@ -138,29 +148,26 @@ export const sdrRoutes: FastifyPluginAsync = async (fastify) => {
   // Create email template
   fastify.post('/templates', {
     schema: {
-      body: {
-        type: 'object',
-        required: ['name', 'subject', 'content'],
-        properties: {
-          name: { type: 'string' },
-          subject: { type: 'string' },
-          content: { type: 'string' },
-          variables: { type: 'array', items: { type: 'string' } }
-        }
-      },
+      body: z.object({
+        name: z.string(),
+        subject: z.string(),
+        content: z.string(),
+        variables: z.array(z.string()).optional()
+      }),
       response: {
-        200: emailTemplateSchema
+        200: z.object(emailTemplateSchema.shape)
       }
     }
-  }, async (request, reply) => {
+  }, async (request) => {
     const { name, subject, content, variables } = request.body as any
-
     return prisma.emailTemplate.create({
       data: {
         name,
         subject,
         content,
-        variables: variables || []
+        variables: variables || [],
+        team: { connect: { id: '123' } },
+        createdBy: { connect: { id: '123' } }
       }
     })
   })
@@ -169,10 +176,7 @@ export const sdrRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/templates', {
     schema: {
       response: {
-        200: {
-          type: 'array',
-          items: emailTemplateSchema
-        }
+        200: z.array(emailTemplateSchema)
       }
     }
   }, async () => {
@@ -184,20 +188,8 @@ export const sdrRoutes: FastifyPluginAsync = async (fastify) => {
   // Generate email for lead
   fastify.post('/leads/:id/emails', {
     schema: {
-      params: {
-        type: 'object',
-        required: ['id'],
-        properties: {
-          id: { type: 'string' }
-        }
-      },
-      body: {
-        type: 'object',
-        required: ['templateId'],
-        properties: {
-          templateId: { type: 'string' }
-        }
-      }
+      params: z.object({ id: z.string() }),
+      body: z.object({ templateId: z.string() })
     }
   }, async (request, reply) => {
     const { id } = request.params as { id: string }

@@ -1,15 +1,8 @@
-import { prisma, type Lead, EmailType } from '@graham/db'
-import { OpenAI } from 'openai'
+import { prisma, LeadStatus } from '@graham/db'
 import axios from 'axios'
-import { Browserbase } from '@browserbasehq/sdk'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-})
-
-const browserbase = new Browserbase({
-  apiKey: process.env.BROWSERBASE_API_KEY
-})
+import { Stagehand } from '@browserbasehq/stagehand'
+import { z } from 'zod'
+import { Client } from "@upstash/qstash"
 
 const apolloClient = axios.create({
   baseURL: 'https://api.apollo.io/v1',
@@ -27,160 +20,153 @@ const exaLabsClient = axios.create({
   }
 })
 
+const QSTASH = new Client({ token: process.env.QSTASH_TOKEN! });
+
 export class EnrichmentService {
-  private async enrichPersonalEmail(lead: Lead) {
+  async addToEnrichmentQueue(
+    userId: string,
+    teamId: string,
+    email: string,
+    metadata: any
+  ) {
+    await QSTASH.publishJSON({
+      url: `${process.env.NEXT_PUBLIC_API_URL}/api/webhook/enrich`,
+      body: { userId, teamId, email, metadata },
+      options: {
+        retries: 3,
+        deduplicationId: userId,
+        delay: 0
+      }
+    });
+  }
+
+  async processEnrichment(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        team: {
+          include: {
+            members: {
+              include: {
+                leads: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!user) throw new Error('User not found')
+
+    // Find the team member record for this user
+    const teamMember = user.team.members.find(m => m.userId === userId)
+    if (!teamMember) throw new Error('Team member not found')
+
+    const lead = teamMember.leads[0]
+    if (!lead) throw new Error('No lead found for user')
+
     try {
-      // Use browserbase to scrape LinkedIn
-      const linkedInData = await this.scrapeLinkedIn(lead.email)
-      
-      // Get ExaLabs data
-      const exaLabsData = await this.getExaLabsData(lead.email)
-      
-      // Get Apollo data for additional company info
-      const apolloData = await this.getApolloData(lead.email)
-      
-      // Combine all enrichment data
+      // Get enrichment data
+      const [linkedInData, apolloData, exaLabsData] = await Promise.all([
+        this.scrapeLinkedIn(user.email),
+        this.getApolloData(user.email),
+        this.getExaLabsData(user.email)
+      ])
+
+      // Combine enrichment data
       const enrichmentData = {
         linkedin: linkedInData,
+        apollo: apolloData,
         exaLabs: exaLabsData,
-        apollo: apolloData
+        enrichedAt: new Date()
       }
-      
+
       // Update lead with enriched data
-      return await prisma.lead.update({
+      await prisma.lead.update({
         where: { id: lead.id },
         data: {
           linkedInUrl: linkedInData.profileUrl,
           company: linkedInData.company || apolloData.company,
           title: linkedInData.title || apolloData.title,
           industry: linkedInData.industry || apolloData.industry,
-          enrichmentData,
-          status: 'ENRICHED'
-        }
-      })
-    } catch (error) {
-      console.error('Error enriching personal email:', error)
-      throw error
-    }
-  }
-
-  private async enrichCompanyEmail(lead: Lead) {
-    try {
-      // Use Apollo API to get company data
-      const apolloData = await this.getApolloData(lead.email)
-      
-      // Update lead with enriched data
-      return await prisma.lead.update({
-        where: { id: lead.id },
-        data: {
-          company: apolloData.company,
-          title: apolloData.title,
-          industry: apolloData.industry,
           companySize: apolloData.companySize,
           location: apolloData.location,
-          enrichmentData: apolloData,
-          status: 'ENRICHED'
+          enrichmentData,
+          status: LeadStatus.ENRICHED
         }
       })
-    } catch (error) {
-      console.error('Error enriching company email:', error)
-      throw error
-    }
-  }
 
-  async processEnrichmentQueue() {
-    const queueItems = await prisma.enrichmentQueue.findMany({
-      where: {
-        attempts: { lt: 3 },
-        OR: [
-          { lastAttempt: null },
-          { lastAttempt: { lt: new Date(Date.now() - 1000 * 60 * 60) } } // Retry after 1 hour
-        ]
-      },
-      take: 10
-    })
-
-    for (const item of queueItems) {
-      try {
-        const lead = await prisma.lead.findUnique({
-          where: { id: item.leadId }
-        })
-
-        if (!lead) continue
-
-        if (lead.emailType === EmailType.PERSONAL) {
-          await this.enrichPersonalEmail(lead)
-        } else {
-          await this.enrichCompanyEmail(lead)
-        }
-
-        // Remove from queue on success
-        await prisma.enrichmentQueue.delete({
-          where: { id: item.id }
-        })
-
-      } catch (error) {
-        // Update attempt count and error
-        await prisma.enrichmentQueue.update({
-          where: { id: item.id },
-          data: {
-            attempts: { increment: 1 },
-            lastAttempt: new Date(),
-            error: (error as Error).message
+      await prisma.activity.create({
+        data: {
+          type: 'enrichment_success',
+          description: `Successfully enriched data for ${user.email}`,
+          leadId: lead.id,
+          teamMemberId: teamMember.id,
+          metadata: {
+            enrichmentSource: ['linkedin', 'apollo', 'exalabs'],
+            foundData: {
+              company: !!linkedInData.company || !!apolloData.company,
+              title: !!linkedInData.title || !!apolloData.title,
+              industry: !!linkedInData.industry || !!apolloData.industry
+            }
           }
-        })
-      }
+        }
+      })
+
+    } catch (error) {
+      console.error('Error in processEnrichment:', error)
+      
+      // Update lead status to failed
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: {
+          status: LeadStatus.ENRICHED,
+          enrichmentData: {
+            error: (error as Error).message,
+            failedAt: new Date()
+          }
+        }
+      })
+
+      throw error
     }
   }
 
   private async scrapeLinkedIn(email: string) {
     try {
-      // Create a new browser instance
-      const browser = await browserbase.browser.create({
-        name: `LinkedIn Scrape - ${email}`,
-        browserType: 'chrome',
-        proxyEnabled: true
-      })
+      const stagehand = new Stagehand({
+        // env: 'BROWSERBASE',
+        env: 'LOCAL',
+        enableCaching: true
+      });
 
-      // Create a new page
-      const page = await browser.page.create()
+      await stagehand.init();
 
-      // Go to LinkedIn email search
-      await page.goto(`https://www.linkedin.com/pub/dir?email=${email}`)
+      await stagehand.page.goto(`https://www.linkedin.com/`);
       
-      // Wait for profile card or search results
-      const profileCard = await page.waitForSelector('.profile-card, .search-result-item')
-      
-      // Get profile URL
-      const profileUrl = await profileCard.$eval('a[href*="/in/"]', (el) => el.href)
-      
-      // Navigate to profile
-      await page.goto(profileUrl)
-      
-      // Wait for content to load
-      await page.waitForSelector('.pv-top-card')
-      
-      // Extract data
-      const data = await page.evaluate(() => {
-        const getTextContent = (selector: string) => 
-          document.querySelector(selector)?.textContent?.trim() || ''
+      await stagehand.act({ 
+        action: `click on the first profile link that appears ${email}`
+      });
 
-        return {
-          company: getTextContent('.pv-top-card .pv-text-details__right-panel .pv-text-details__employer-info'),
-          title: getTextContent('.pv-top-card .pv-text-details__right-panel .pv-text-details__role'),
-          industry: getTextContent('.pv-top-card .pv-text-details__right-panel .pv-entity__industry'),
-          location: getTextContent('.pv-top-card .pv-text-details__right-panel .pv-text-details__location'),
-          profileUrl: window.location.href
-        }
-      })
+      // Extract profile data
+      const profileData = await stagehand.extract({
+        instruction: "extract the person's current company, title, industry and location from their profile",
+        schema: z.object({
+          company: z.string().optional(),
+          title: z.string().optional(), 
+          industry: z.string().optional(),
+          location: z.string().optional(),
+          profileUrl: z.string()
+        })
+      });
 
-      // Close browser
-      await browser.close()
+      await stagehand.close();
       
-      return data
+      return profileData;
+
     } catch (error) {
-      console.error('Error scraping LinkedIn:', error)
-      throw error
+      console.error('Error scraping LinkedIn:', error);
+      throw error;
     }
   }
 
@@ -241,4 +227,4 @@ export class EnrichmentService {
       throw error
     }
   }
-} 
+}
