@@ -26,4 +26,19 @@ user signs up -> webhook to add the user to the enrichment queue -> worker picks
 
 
 enrichment tools
-- 
+- start with browserbase google search, if the person is not found then do next steps
+    - can use google dorking for specialized search queries 
+
+- apollo.io for person enrichment
+    - get the person's name and return email confirmed companies linkedin etc
+    - get the top 5 and then search from there
+
+- exa labs (linkedin semantic search)
+    - search for the person's name and return the top 5 results
+    - match with apollo.io to find common matches and pinpoint user 
+
+* if the user registers with their company email we can easily pinpoint who it is and might not even need to do both searches
+
+- searching twitter for their name/potential posts with the company 
+    - done with browserbase and stagehand
+

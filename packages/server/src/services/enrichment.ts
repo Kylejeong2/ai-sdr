@@ -1,4 +1,4 @@
-import { prisma, LeadStatus } from '@graham/db'
+import { prisma, LeadStatus, EmailType } from '@graham/db'
 import axios from 'axios'
 import { Stagehand } from '@browserbasehq/stagehand'
 import { z } from 'zod'
@@ -58,7 +58,6 @@ export class EnrichmentService {
 
     if (!user) throw new Error('User not found')
 
-    // Find the team member record for this user
     const teamMember = user.team.members.find(m => m.userId === userId)
     if (!teamMember) throw new Error('Team member not found')
 
@@ -66,31 +65,20 @@ export class EnrichmentService {
     if (!lead) throw new Error('No lead found for user')
 
     try {
-      // Get enrichment data
-      const [linkedInData, apolloData, exaLabsData] = await Promise.all([
-        this.scrapeLinkedIn(user.email),
-        this.getApolloData(user.email),
-        this.getExaLabsData(user.email)
-      ])
+      const isCompanyEmail = lead.emailType === EmailType.COMPANY
+      const enrichmentData = isCompanyEmail 
+        ? await this.processCompanyEmailPipeline(user.email)
+        : await this.processNonCompanyEmailPipeline(user.email, `${lead.firstName} ${lead.lastName}`.trim())
 
-      // Combine enrichment data
-      const enrichmentData = {
-        linkedin: linkedInData,
-        apollo: apolloData,
-        exaLabs: exaLabsData,
-        enrichedAt: new Date()
-      }
-
-      // Update lead with enriched data
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
-          linkedInUrl: linkedInData.profileUrl,
-          company: linkedInData.company || apolloData.company,
-          title: linkedInData.title || apolloData.title,
-          industry: linkedInData.industry || apolloData.industry,
-          companySize: apolloData.companySize,
-          location: apolloData.location,
+          linkedInUrl: enrichmentData.linkedInUrl,
+          company: enrichmentData.company,
+          title: enrichmentData.title,
+          industry: enrichmentData.industry,
+          companySize: enrichmentData.companySize,
+          location: enrichmentData.location,
           enrichmentData,
           status: LeadStatus.ENRICHED
         }
@@ -103,11 +91,11 @@ export class EnrichmentService {
           leadId: lead.id,
           teamMemberId: teamMember.id,
           metadata: {
-            enrichmentSource: ['linkedin', 'apollo', 'exalabs'],
+            enrichmentSource: enrichmentData.sources,
             foundData: {
-              company: !!linkedInData.company || !!apolloData.company,
-              title: !!linkedInData.title || !!apolloData.title,
-              industry: !!linkedInData.industry || !!apolloData.industry
+              company: !!enrichmentData.company,
+              title: !!enrichmentData.title,
+              industry: !!enrichmentData.industry
             }
           }
         }
@@ -116,7 +104,6 @@ export class EnrichmentService {
     } catch (error) {
       console.error('Error in processEnrichment:', error)
       
-      // Update lead status to failed
       await prisma.lead.update({
         where: { id: lead.id },
         data: {
@@ -132,51 +119,189 @@ export class EnrichmentService {
     }
   }
 
-  private async scrapeLinkedIn(email: string) {
-    try {
-      const stagehand = new Stagehand({
-        // env: 'BROWSERBASE',
-        env: 'LOCAL',
-        enableCaching: true
-      });
+  private async processCompanyEmailPipeline(email: string) {
+    // For company emails, we can directly find their LinkedIn profile
+    const [apolloData, linkedInData] = await Promise.all([
+      this.getApolloData(email),
+      this.findLinkedInProfile(email)
+    ])
 
-      await stagehand.init();
-
-      await stagehand.page.goto(`https://www.linkedin.com/`);
-      
-      await stagehand.act({ 
-        action: `click on the first profile link that appears ${email}`
-      });
-
-      // Extract profile data
-      const profileData = await stagehand.extract({
-        instruction: "extract the person's current company, title, industry and location from their profile",
-        schema: z.object({
-          company: z.string().optional(),
-          title: z.string().optional(), 
-          industry: z.string().optional(),
-          location: z.string().optional(),
-          profileUrl: z.string()
-        })
-      });
-
-      await stagehand.close();
-      
-      return profileData;
-
-    } catch (error) {
-      console.error('Error scraping LinkedIn:', error);
-      throw error;
+    return {
+      ...apolloData,
+      ...linkedInData,
+      sources: ['apollo', 'linkedin'],
+      enrichedAt: new Date()
     }
+  }
+
+  private async processNonCompanyEmailPipeline(email: string, fullName: string) {
+    const stagehand = new Stagehand({
+      env: 'LOCAL',
+      enableCaching: true
+    });
+
+    await stagehand.init();
+
+    // First try Google dork search
+    const googleResults = await this.googleDorkSearch(stagehand, email, fullName)
+    if (googleResults.found && googleResults.linkedInUrl) {
+      const [apolloData, linkedInData] = await Promise.all([
+        this.getApolloData(email),
+        this.findLinkedInProfile(googleResults.linkedInUrl)
+      ])
+
+      await stagehand.close()
+      return {
+        ...apolloData,
+        ...linkedInData,
+        sources: ['google', 'apollo', 'linkedin'],
+        enrichedAt: new Date()
+      }
+    }
+
+    // If Google search fails, try Apollo + ExaLabs combination
+    const [apolloResults, exaResults] = await Promise.all([
+      this.searchApollo(fullName),
+      this.searchExaLabs(fullName)
+    ])
+
+    // Find matching profiles between Apollo and ExaLabs
+    const matchedProfile = this.findMatchingProfile(apolloResults, exaResults)
+    if (matchedProfile) {
+      const linkedInData = await this.findLinkedInProfile(matchedProfile.linkedInUrl)
+      
+      await stagehand.close()
+      return {
+        ...matchedProfile,
+        ...linkedInData,
+        sources: ['apollo', 'exalabs', 'linkedin'],
+        enrichedAt: new Date()
+      }
+    }
+
+    await stagehand.close()
+    throw new Error('Could not find matching profile')
+  }
+
+  private async googleDorkSearch(stagehand: Stagehand, email: string, fullName: string) {
+    const searchQuery = `site:linkedin.com/in/ "${fullName}" OR "${email.split('@')[0]}"`
+    
+    await stagehand.page.goto(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`);
+    
+    const linkedInUrl = await stagehand.extract({
+      instruction: "extract the first LinkedIn profile URL from the search results",
+      schema: z.object({
+        url: z.string().url().optional()
+      })
+    });
+
+    return {
+      found: !!linkedInUrl.url,
+      linkedInUrl: linkedInUrl.url
+    }
+  }
+
+  private async searchApollo(fullName: string) {
+    const { data } = await apolloClient.post('/people/search', {
+      q_person_name: fullName,
+      page: 1,
+      per_page: 5
+    })
+    return data.people || []
+  }
+
+  private async searchExaLabs(fullName: string) {
+    const { data } = await exaLabsClient.post('/v1/search', {
+      query: fullName,
+      limit: 5
+    })
+    return data.results || []
+  }
+
+  private findMatchingProfile(apolloResults: any[], exaResults: any[]) {
+    // Match profiles based on name, company, title similarity
+    for (const apollo of apolloResults) {
+      const match = exaResults.find(exa => 
+        this.calculateProfileSimilarity(apollo, exa) > 0.8
+      )
+      if (match) {
+        return {
+          ...apollo,
+          linkedInUrl: match.linkedin_url
+        }
+      }
+    }
+    return null
+  }
+
+  private calculateProfileSimilarity(apollo: any, exa: any): number {
+    let score = 0
+    
+    // Name similarity
+    if (apollo.name.toLowerCase() === exa.name.toLowerCase()) score += 0.4
+    
+    // Company similarity
+    if (apollo.organization?.name?.toLowerCase() === exa.company?.toLowerCase()) score += 0.3
+    
+    // Title similarity
+    if (apollo.title?.toLowerCase() === exa.title?.toLowerCase()) score += 0.3
+    
+    return score
+  }
+
+  private async findLinkedInProfile(linkedInUrl: string) {
+    const stagehand = new Stagehand({
+      env: 'LOCAL',
+      enableCaching: true
+    });
+
+    await stagehand.init();
+    await stagehand.page.goto(linkedInUrl);
+    
+    const profileData = await stagehand.extract({
+      instruction: "extract the person's current company, title, industry and location from their profile",
+      schema: z.object({
+        company: z.string().optional(),
+        title: z.string().optional(), 
+        industry: z.string().optional(),
+        location: z.string().optional(),
+        profileUrl: z.string()
+      })
+    });
+
+    await stagehand.close();
+    return profileData;
   }
 
   private async getApolloData(email: string) {
     try {
-      // Search for person in Apollo
-      const { data } = await apolloClient.post('/people/search', {
-        q_organization_domains: [email.split('@')[1]],
+      const [username, domain] = email.split('@')
+      
+      if (!username || !domain) {
+        throw new Error('Invalid email format')
+      }
+
+      // Clean domain by removing common email providers
+      const commonEmailProviders = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com']
+      const isCompanyDomain = !commonEmailProviders.includes(domain)
+      
+      // Build search params based on available data
+      const searchParams: any = {
         q_emails: [email]
-      })
+      }
+
+      if (isCompanyDomain) {
+        // If it's a company domain, add organization search params
+        searchParams.q_organization_domains = [domain]
+        
+        // Try to extract company name from domain
+        const [companyName] = domain.split('.')
+        if (companyName) {
+          searchParams.q_organization_name = companyName
+        }
+      }
+
+      const { data } = await apolloClient.post('/people/search', searchParams)
 
       if (!data.people || data.people.length === 0) {
         throw new Error('Person not found in Apollo')
@@ -193,37 +318,13 @@ export class EnrichmentService {
         location: `${person.city}, ${person.state}`,
         enrichmentData: {
           person,
-          organization
+          organization,
+          domain,
+          isCompanyDomain
         }
       }
     } catch (error) {
       console.error('Error getting Apollo data:', error)
-      throw error
-    }
-  }
-
-  private async getExaLabsData(email: string) {
-    try {
-      const { data } = await exaLabsClient.post('/v1/search', {
-        email,
-        enrich: true,
-        include_social: true
-      })
-
-      if (!data.results || data.results.length === 0) {
-        throw new Error('Person not found in ExaLabs')
-      }
-
-      const person = data.results[0]
-      return {
-        socialProfiles: person.social_profiles,
-        workHistory: person.work_history,
-        education: person.education,
-        skills: person.skills,
-        interests: person.interests
-      }
-    } catch (error) {
-      console.error('Error getting ExaLabs data:', error)
       throw error
     }
   }
