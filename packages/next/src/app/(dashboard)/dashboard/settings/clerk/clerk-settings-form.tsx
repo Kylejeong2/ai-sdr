@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { useOrganization } from '@clerk/nextjs'
 
 const clerkConfigSchema = z.object({
   publishableKey: z.string().min(1, 'Required'),
@@ -49,6 +51,7 @@ interface ClerkSettingsFormProps {
 
 export function ClerkSettingsForm({ teamId, initialData }: ClerkSettingsFormProps) {
   const router = useRouter()
+  const { organization } = useOrganization()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
   const [webhookHealth, setWebhookHealth] = useState<'healthy' | 'error' | null>(
@@ -59,11 +62,13 @@ export function ClerkSettingsForm({ teamId, initialData }: ClerkSettingsFormProp
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors }
   } = useForm<ClerkConfigFormData>({
     resolver: zodResolver(clerkConfigSchema),
     defaultValues: {
       ...initialData,
+      organizationId: organization?.id || initialData?.organizationId || '',
       environment: (initialData?.environment as 'test' | 'production') || 'test',
       webhookEvents: initialData?.webhookEvents || [
         'user.created',
@@ -73,29 +78,42 @@ export function ClerkSettingsForm({ teamId, initialData }: ClerkSettingsFormProp
     }
   })
 
+  useEffect(() => {
+    if (organization?.id) {
+      setValue('organizationId', organization.id)
+    }
+  }, [organization?.id, setValue])
+
   const environment = watch('environment')
 
   const testConnection = async () => {
+    if (!watch('secretKey') || !watch('webhookSecret')) {
+      toast.error('Please provide both Secret Key and Webhook Secret')
+      return
+    }
+
     try {
       setIsTestingConnection(true)
       const response = await fetch('/api/settings/clerk/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          publishableKey: watch('publishableKey'),
           secretKey: watch('secretKey'),
           webhookSecret: watch('webhookSecret')
         })
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        throw new Error('Connection test failed')
+        throw new Error(data.error || 'Connection test failed')
       }
 
-      toast.success('Connection test successful')
+      toast.success('Connection test successful! API keys and webhook are valid.')
       setWebhookHealth('healthy')
     } catch (error) {
-      toast.error('Connection test failed')
+      console.error('Test connection error:', error)
+      toast.error(error instanceof Error ? error.message : 'Connection test failed')
       setWebhookHealth('error')
     } finally {
       setIsTestingConnection(false)
@@ -105,25 +123,27 @@ export function ClerkSettingsForm({ teamId, initialData }: ClerkSettingsFormProp
   const onSubmit = async (data: ClerkConfigFormData) => {
     try {
       setIsSubmitting(true)
-      
       const response = await fetch('/api/settings/clerk', {
-        method: initialData ? 'PUT' : 'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...data,
           teamId,
-          ...data
+          organizationId: organization?.id
         })
       })
 
+      const responseData = await response.json()
+
       if (!response.ok) {
-        throw new Error('Failed to save settings')
+        throw new Error(responseData.error || 'Failed to save settings')
       }
 
-      toast.success('Clerk settings saved successfully')
+      toast.success('Settings saved successfully')
       router.refresh()
     } catch (error) {
-      toast.error('Failed to save settings')
-      console.error(error)
+      console.error('Save settings error:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to save settings')
     } finally {
       setIsSubmitting(false)
     }
@@ -215,32 +235,31 @@ export function ClerkSettingsForm({ teamId, initialData }: ClerkSettingsFormProp
             <p className="mt-1.5 text-xs text-red-400">{errors.webhookSecret.message}</p>
           )}
         </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">
-            Organization ID
-          </label>
-          <Input
-            {...register('organizationId')}
-            type="text"
-            placeholder="org_..."
-            className="bg-gray-900 border-gray-800 focus:ring-blue-500 focus:border-blue-500"
-          />
-          {errors.organizationId && (
-            <p className="mt-1.5 text-xs text-red-400">{errors.organizationId.message}</p>
-          )}
-        </div>
       </div>
 
-      <div className="pt-4">
+      <div className="pt-4 space-y-4">
+        <Button 
+          onClick={() => testConnection()}
+          type="button"
+          disabled={isTestingConnection || !watch('secretKey') || !watch('webhookSecret')}
+          className="w-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isTestingConnection ? 'Testing Connection...' : 'Test Connection'}
+        </Button>
+
         <Button 
           type="submit" 
-          disabled={isSubmitting}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+          disabled={isSubmitting || webhookHealth !== 'healthy'}
+          className={cn(
+            "w-full transition-all duration-200",
+            webhookHealth === 'healthy' 
+              ? "bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
+              : "bg-gradient-to-r from-gray-600 to-gray-700 opacity-50 cursor-not-allowed"
+          )}
         >
-          {isSubmitting ? 'Saving...' : 'Save Settings'}
+          {isSubmitting ? 'Saving...' : webhookHealth === 'healthy' ? 'Save Settings' : 'Test Connection First'}
         </Button>
       </div>
     </form>
   )
-} 
+}

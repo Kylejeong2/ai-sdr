@@ -1,73 +1,95 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@graham/db'
-import { z } from 'zod'
-
-const settingsSchema = z.object({
-  organizationId: z.string(),
-  publishableKey: z.string(),
-  secretKey: z.string(),
-  webhookSecret: z.string(),
-  environment: z.enum(['test', 'production']).default('test'),
-  webhookEvents: z.array(z.string()).default([
-    'user.created',
-    'organization.created',
-    'organizationMembership.created'
-  ])
-})
 
 export async function POST(req: Request) {
   try {
     const session = await auth()
     if (!session?.userId || !session?.orgId) {
-      return new NextResponse('Unauthorized', { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const json = await req.json()
-    const body = settingsSchema.parse(json)
+    const { teamId, publishableKey, secretKey, webhookSecret, organizationId, environment = 'test', webhookEvents } = await req.json()
 
-    // Verify that the user is updating settings for their own organization
-    if (body.organizationId !== session.orgId) {
-      return new NextResponse('Unauthorized', { status: 401 })
+    if (!teamId || !publishableKey || !secretKey || !webhookSecret || !organizationId) {
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      )
     }
 
-    // Get or create the team
-    const team = await prisma.team.upsert({
-      where: { id: session.orgId },
-      create: {
-        id: session.orgId,
-        name: 'My Team', // You might want to get this from Clerk
-      },
-      update: {},
+    // Get team info from Clerk
+    const teamResponse = await fetch(`https://api.clerk.com/v1/organizations/${organizationId}`, {
+      headers: {
+        'Authorization': `Bearer ${secretKey}`,
+        'Content-Type': 'application/json'
+      }
     })
+    const teamData = await teamResponse.json()
 
-    // Update or create the Clerk config
-    const clerkConfig = await prisma.clerkConfig.upsert({
-      where: { teamId: team.id },
+    const team = await prisma.team.upsert({
+      where: { id: teamId },
       create: {
-        teamId: team.id,
-        publishableKey: body.publishableKey,
-        secretKey: body.secretKey,
-        webhookSecret: body.webhookSecret,
-        organizationId: body.organizationId,
-        environment: body.environment,
-        webhookEvents: body.webhookEvents,
-        organizationName: 'My Organization', // You might want to get this from Clerk
-        organizationSlug: 'my-org', // You might want to get this from Clerk
+        id: teamId,
+        name: teamData.name || 'My Organization'
       },
       update: {
-        publishableKey: body.publishableKey,
-        secretKey: body.secretKey,
-        webhookSecret: body.webhookSecret,
-        environment: body.environment,
-        webhookEvents: body.webhookEvents
+        name: teamData.name || 'My Organization'
       }
     })
 
-    return NextResponse.json(clerkConfig)
+    if (!team) {
+      return NextResponse.json({ error: 'Team not found' }, { status: 404 })
+    }
+
+    // Then create/update clerk config
+    const settings = await prisma.clerkConfig.upsert({
+      where: { id: teamId },
+      create: {
+        id: teamId,
+        publishableKey,
+        secretKey,
+        webhookSecret,
+        organizationId,
+        environment,
+        webhookEvents,
+        isActive: true,
+        webhookStatus: 'healthy',
+        organizationName: teamData.name || 'My Organization',
+        organizationSlug: teamData.slug || 'my-org',
+        team: {
+          connect: { id: teamId }
+        }
+      },
+      update: {
+        publishableKey,
+        secretKey,
+        webhookSecret,
+        organizationId,
+        environment,
+        webhookEvents,
+        isActive: true,
+        webhookStatus: 'healthy',
+        organizationName: teamData.name || 'My Organization',
+        organizationSlug: teamData.slug || 'my-org'
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Settings saved successfully',
+      settings: {
+        ...settings,
+        secretKey: undefined,
+        webhookSecret: undefined
+      }
+    })
   } catch (error) {
-    console.error('[CLERK_SETTINGS]', error)
-    return new NextResponse('Internal Error', { status: 500 })
+    console.error('[CLERK_SETTINGS_SAVE]', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to save settings' },
+      { status: 500 }
+    )
   }
 }
 

@@ -1,69 +1,60 @@
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@graham/db'
 import { ClerkSettingsForm } from './clerk-settings-form'
-import { AlertCircle, KeyRound, Webhook } from 'lucide-react'
+import { KeyRound, Webhook } from 'lucide-react'
 
 export default async function ClerkSettingsPage() {
-  const { userId, orgId } = await auth()
+  const session = await auth()
+  const orgId = session?.orgId
   
-  if (!userId || !orgId) {
+  if (!orgId) {
     return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="p-6 bg-black/40 backdrop-blur-xl border border-gray-800 rounded-lg shadow-xl">
-          <div className="flex items-center gap-3 text-yellow-500">
-            <AlertCircle className="h-5 w-5" />
-            <p className="text-sm">No organization selected</p>
-          </div>
+      <div className="p-4">
+        <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-4">
+          <p className="text-sm text-red-500">Please select an organization to configure Clerk settings.</p>
         </div>
       </div>
     )
   }
 
-  const team = await prisma.team.findFirst({
-    where: {
-      id: orgId,
-      members: {
-        some: {
-          userId: userId,
-          role: 'OWNER'
-        }
-      }
-    },
-    include: {
-      clerkConfig: true
-    }
+  // Fetch existing config
+  const config = await prisma.clerkConfig.findUnique({
+    where: { id: orgId }
   })
 
-  if (!team) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="p-6 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-          <div className="flex items-center gap-3 text-yellow-500">
-            <AlertCircle className="h-5 w-5" />
-            <p className="text-sm">
-              Team not found. Make sure you are logged in as an owner of this organization.
+  // Transform Prisma data to match form data structure
+  const initialData = config ? {
+    id: config.id,
+    publishableKey: config.publishableKey,
+    secretKey: config.secretKey,
+    webhookSecret: config.webhookSecret,
+    organizationId: config.organizationId,
+    isActive: config.isActive,
+    environment: config.environment || undefined,
+    webhookEvents: config.webhookEvents || undefined,
+    lastWebhookReceived: config.lastWebhookReceived || undefined,
+    webhookStatus: config.webhookStatus as 'healthy' | 'error' | undefined
+  } : undefined
+
+  return (
+    <div className="p-6">
+      <div className="mb-8">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-500/10 rounded-lg">
+            <KeyRound className="h-6 w-6 text-blue-400" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">Clerk Settings</h2>
+            <p className="text-sm text-gray-400">
+              Configure your Clerk integration settings for authentication and user management.
             </p>
           </div>
         </div>
       </div>
-    )
-  }
 
-  return (
-    <div className="container mx-auto py-8 space-y-8">
-      <div className="flex items-center gap-3">
-        <div className="p-2 bg-blue-500/10 rounded-lg">
-          <KeyRound className="h-6 w-6 text-blue-400" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold">Clerk Integration</h1>
-          <p className="text-sm text-gray-400">Connect your Clerk organization to enable user management</p>
-        </div>
-      </div>
-      
       <div className="grid gap-6 md:grid-cols-[300px,1fr]">
-        <div className="space-y-6">
-          <div className="p-6 bg-black/40 backdrop-blur-xl border border-gray-800 rounded-lg">
+        <div className="space-y-4">
+          <div className="rounded-lg border bg-card p-6">
             <div className="flex items-center gap-3 mb-4">
               <Webhook className="h-5 w-5 text-purple-400" />
               <h3 className="font-medium">Setup Guide</h3>
@@ -83,7 +74,7 @@ export default async function ClerkSettingsPage() {
               </li>
               <li className="flex gap-2">
                 <span className="flex-none w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center text-xs">4</span>
-                <span>Set the webhook URL to: <code className="px-2 py-0.5 bg-gray-800 rounded text-xs">{process.env.NEXT_PUBLIC_API_URL}/api/webhook/clerk</code></span>
+                <span>Set the webhook URL to: <code className="px-2 py-0.5 bg-gray-800 rounded text-xs">{process.env.NEXT_PUBLIC_BASE_URL}/api/webhook/clerk</code></span>
               </li>
               <li className="flex gap-2">
                 <span className="flex-none w-5 h-5 rounded-full bg-gray-800 flex items-center justify-center text-xs">5</span>
@@ -104,21 +95,10 @@ export default async function ClerkSettingsPage() {
           </div>
         </div>
 
-        <div className="p-6 bg-black/40 backdrop-blur-xl border border-gray-800 rounded-lg">
+        <div className="rounded-lg border bg-card p-6">
           <ClerkSettingsForm 
-            teamId={team.id}
-            initialData={team.clerkConfig ? {
-              id: team.clerkConfig.id,
-              publishableKey: team.clerkConfig.publishableKey,
-              secretKey: team.clerkConfig.secretKey,
-              webhookSecret: team.clerkConfig.webhookSecret,
-              organizationId: team.clerkConfig.organizationId,
-              isActive: team.clerkConfig.isActive,
-              environment: team.clerkConfig.environment || undefined,
-              webhookEvents: team.clerkConfig.webhookEvents || undefined,
-              lastWebhookReceived: team.clerkConfig.lastWebhookReceived || undefined,
-              webhookStatus: (team.clerkConfig.webhookStatus as 'healthy' | 'error' | undefined) || undefined
-            } : undefined}
+            teamId={orgId} 
+            initialData={initialData}
           />
         </div>
       </div>
