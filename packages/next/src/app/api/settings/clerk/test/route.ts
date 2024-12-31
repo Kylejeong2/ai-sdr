@@ -9,11 +9,22 @@ export async function POST(req: Request) {
       return new NextResponse('Unauthorized', { status: 401 })
     }
 
-    // const { publishableKey, secretKey, webhookSecret, organizationId } = await req.json()
-    const { webhookSecret } = await req.json()
+    // const { publishableKey, secretKey, webhookSecret } = await req.json()
+    const { secretKey, webhookSecret } = await req.json()
 
     try {
-      // Test webhook signature verification
+      // 1. Test API keys by making a request to Clerk
+      const testResponse = await fetch('https://api.clerk.com/v1/me', {
+        headers: {
+          'Authorization': `Bearer ${secretKey}`,
+        }
+      })
+
+      if (!testResponse.ok) {
+        throw new Error('Failed to validate API keys')
+      }
+
+      // 2. Test webhook signature verification
       const wh = new Webhook(webhookSecret)
       const testPayload = JSON.stringify({ test: true })
       const testTimestamp = new Date().toISOString()

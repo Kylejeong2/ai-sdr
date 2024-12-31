@@ -7,9 +7,9 @@ const enrichmentService = new EnrichmentService();
 
 export const POST = verifySignature(async (req: NextApiRequest) => {
   try {
-    const { userId, companyId, email, metadata } = req.body;
+    const { userId, teamId, email, metadata } = req.body;
     
-    if (!userId || !companyId || !email || !metadata) {
+    if (!userId || !teamId || !email || !metadata) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 

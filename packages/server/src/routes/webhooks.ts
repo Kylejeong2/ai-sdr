@@ -151,19 +151,26 @@ export async function webhookRoutes(fastify: FastifyInstance) {
 
   // Enrichment webhook endpoint
   fastify.post('/enrich', async (request, reply) => {
-    // const { userId, companyId, email, metadata } = request.body as { 
-    //   userId: string
-    //   companyId: string
-    //   email: string
-    //   metadata: any
-    // }
-    const { userId, email, metadata } = request.body as { 
+    const { userId, teamId, email, metadata } = request.body as { 
       userId: string
+      teamId: string
       email: string
       metadata: any
     }
     
     try {
+      // Get the lead for this user
+      const teamMember = await prisma.teamMember.findFirst({
+        where: { userId, teamId },
+        include: { leads: true }
+      })
+
+      if (!teamMember || !teamMember.leads[0]) {
+        throw new Error('No lead found for user')
+      }
+
+      const lead = teamMember.leads[0]
+
       // Process the enrichment
       await enrichmentService.processEnrichment(userId)
 
@@ -172,8 +179,8 @@ export async function webhookRoutes(fastify: FastifyInstance) {
         data: {
           type: 'enrichment_completed',
           description: `Enrichment completed for ${email}`,
-          leadId: userId,
-          teamMemberId: userId,
+          leadId: lead.id,
+          teamMemberId: teamMember.id,
           metadata
         }
       })
@@ -182,19 +189,27 @@ export async function webhookRoutes(fastify: FastifyInstance) {
     } catch (error) {
       console.error('Error processing enrichment webhook:', error)
       
-      // Create activity for failed enrichment
-      await prisma.activity.create({
-        data: {
-          type: 'enrichment_failed',
-          description: `Enrichment failed for ${email}: ${(error as Error).message}`,
-          leadId: userId,
-          teamMemberId: userId,
-          metadata: {
-            ...metadata,
-            error: (error as Error).message
-          }
-        }
+      // Get the lead and team member even in error case for activity logging
+      const teamMember = await prisma.teamMember.findFirst({
+        where: { userId, teamId },
+        include: { leads: true }
       })
+
+      if (teamMember && teamMember.leads[0]) {
+        // Create activity for failed enrichment
+        await prisma.activity.create({
+          data: {
+            type: 'enrichment_failed',
+            description: `Enrichment failed for ${email}: ${(error as Error).message}`,
+            leadId: teamMember.leads[0].id,
+            teamMemberId: teamMember.id,
+            metadata: {
+              ...metadata,
+              error: (error as Error).message
+            }
+          }
+        })
+      }
 
       reply.code(500).send({ 
         status: 'error',

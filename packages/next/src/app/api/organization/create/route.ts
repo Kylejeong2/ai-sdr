@@ -1,109 +1,133 @@
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import { prisma } from '@graham/db'
-import { TeamRole } from '@prisma/client'
-import { clerk } from '@/configs/clerk-server'
+import { NextResponse } from 'next/server'
 
-export async function GET(req: Request) {
+async function createOrgEntities(userId: string, orgId: string, name: string, user: any) {
+  // 1. Check if team already exists
+  const existingTeam = await prisma.team.findUnique({
+    where: { id: orgId },
+    include: { members: true }
+  })
+
+  // 2. Check if user already exists
+  const existingUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { clerkId: userId },
+        { email: user.emailAddresses[0].emailAddress }
+      ]
+    }
+  })
+
+  // 3. Create or update team
+  const team = existingTeam || await prisma.team.create({
+    data: {
+      id: orgId,
+      name: name
+    }
+  })
+
+  // 4. Create or update user
+  const dbUser = existingUser 
+    ? await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          clerkId: userId,
+          email: user.emailAddresses[0].emailAddress,
+          teamId: team.id,
+          role: 'OWNER',
+          firstName: user.firstName || '',
+          lastName: user.lastName || ''
+        }
+      })
+    : await prisma.user.create({
+        data: {
+          clerkId: userId,
+          email: user.emailAddresses[0].emailAddress,
+          teamId: team.id,
+          role: 'OWNER',
+          firstName: user.firstName || '',
+          lastName: user.lastName || ''
+        }
+      })
+
+  // 5. Create team member if doesn't exist
+  const existingMember = existingTeam?.members.find(m => m.userId === userId)
+  const teamMember = existingMember || await prisma.teamMember.create({
+    data: {
+      userId,
+      teamId: team.id,
+      role: 'OWNER'
+    }
+  })
+
+  return { team, teamMember, dbUser }
+}
+
+// Handle Clerk's redirect after org creation
+export async function GET() {
   try {
     const session = await auth()
-    if (!session?.userId || !session?.orgId) {
-      return new NextResponse('Unauthorized', { status: 401 })
+    const user = await currentUser()
+    const userId = session.userId
+    const orgId = session.orgId
+    
+    if (!userId || !orgId || !user?.emailAddresses?.[0]?.emailAddress) {
+      return NextResponse.json(
+        { error: 'Unauthorized or missing email' },
+        { status: 401 }
+      )
     }
 
-    const org = await clerk.organizations.getOrganization({ organizationId: session.orgId })
-    const user = await clerk.users.getUser(session.userId)
-
-    // First create or update the team
-    const team = await prisma.team.upsert({
-      where: { id: org.id },
-      create: {
-        id: org.id,
-        name: org.name,
-        createdAt: new Date(org.createdAt),
-        updatedAt: new Date(org.updatedAt),
-        clerkConfig: {
-          create: {
-            publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '',
-            secretKey: process.env.CLERK_SECRET_KEY || '',
-            webhookSecret: process.env.CLERK_WEBHOOK_SECRET || '',
-            organizationId: org.id,
-            organizationName: org.name,
-            organizationSlug: org.slug || '',
-            organizationMetadata: org.publicMetadata ? JSON.parse(JSON.stringify(org.publicMetadata)) : undefined,
-            lastWebhookReceived: null,
-            webhookStatus: 'unconfigured'
-          }
-        }
-      },
-      update: {
-        name: org.name,
-        updatedAt: new Date(org.updatedAt)
+    // Get org details from Clerk
+    const org = await fetch(
+      `https://api.clerk.com/v1/organizations/${orgId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+        },
       }
-    })
+    ).then(res => res.json())
 
-    // First create the ClerkManagedOrg record
-    const managedOrg = await prisma.clerkManagedOrg.create({
-      data: {
-        organizationId: org.id,
-        name: org.name,
-        slug: org.slug || '',
-        metadata: org.publicMetadata ? JSON.parse(JSON.stringify(org.publicMetadata)) : undefined,
-        clerkConfig: {
-          connect: { teamId: team.id }
-        }
-      }
-    })
+    await createOrgEntities(userId, orgId, org.name, user)
 
-    // Then create or update the team member
-    const existingMember = await prisma.teamMember.findFirst({
-      where: {
-        userId: session.userId,
-        teamId: team.id
-      }
-    })
-
-    if (existingMember) {
-      await prisma.teamMember.update({
-        where: { id: existingMember.id },
-        data: { role: TeamRole.OWNER }
-      })
-    } else {
-      await prisma.teamMember.create({
-        data: {
-          userId: session.userId,
-          teamId: team.id,
-          role: TeamRole.OWNER
-        }
-      })
-    }
-
-    // Finally update the user with the managed org reference
-    await prisma.user.upsert({
-      where: { id: session.userId },
-      create: {
-        id: session.userId,
-        email: user.emailAddresses[0]?.emailAddress || '',
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-        teamId: team.id,
-        role: 'OWNER',
-        clerkOrgId: managedOrg.id
-      },
-      update: {
-        email: user.emailAddresses[0]?.emailAddress || '',
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-        teamId: team.id,
-        role: 'OWNER',
-        clerkOrgId: managedOrg.id
-      }
-    })
-
-    // Redirect to onboarding
-    return NextResponse.redirect(new URL('/onboarding', req.url))
+    // Redirect to dashboard
+    return NextResponse.redirect(new URL('/dashboard', process.env.NEXT_PUBLIC_BASE_URL))
   } catch (error) {
-    console.error('[ORGANIZATION_CREATE]', error)
-    return new NextResponse('Internal Error', { status: 500 })
+    console.error('Error creating organization:', error)
+    return NextResponse.json(
+      { error: 'Failed to create organization' },
+      { status: 500 }
+    )
+  }
+}
+
+// Handle direct API calls
+export async function POST(req: Request) {
+  try {
+    const session = await auth()
+    const user = await currentUser()
+    const userId = session.userId
+    
+    if (!userId || !user?.emailAddresses?.[0]?.emailAddress) {
+      return NextResponse.json(
+        { error: 'Unauthorized or missing email' },
+        { status: 401 }
+      )
+    }
+
+    const { orgId, name } = await req.json()
+    const result = await createOrgEntities(userId, orgId, name, user)
+
+    return NextResponse.json({ 
+      success: true,
+      ...result
+    })
+  } catch (error) {
+    console.error('Error creating organization:', error)
+    return NextResponse.json(
+      { error: 'Failed to create organization' },
+      { status: 500 }
+    )
   }
 } 

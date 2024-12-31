@@ -76,15 +76,6 @@ export default function OrgSelectionPage() {
                   </p>
                   <CreateOrganization 
                     afterCreateOrganizationUrl="/api/organization/create"
-                    // appearance={{
-                    //   elements: {
-                    //     formButtonPrimary: 
-                    //       "w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium px-6 py-3 rounded-lg shadow-lg transform transition-all duration-200 hover:scale-[1.02] hover:shadow-blue-500/25 active:scale-[0.98] focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-2 focus:ring-offset-black/40",
-                    //     card: "bg-transparent shadow-none p-0 w-full",
-                    //     form: "space-y-4 w-full",
-                    //     formInput: "w-full bg-black/50 border-gray-800 text-white rounded-lg focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all duration-200"
-                    //   }
-                    // }}
                   />
                 </div>
               </div>
