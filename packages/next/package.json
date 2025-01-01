@@ -12,12 +12,14 @@
     "postbuild": "next-sitemap"
   },
   "dependencies": {
+    "@browserbasehq/stagehand": "^1.8.0",
     "@clerk/nextjs": "^6.9.6",
     "@graham/db": "workspace:^",
     "@graham/server": "workspace:^",
     "@graham/shared": "workspace:^",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^3.9.1",
+    "@playwright/test": "^1.49.1",
     "@radix-ui/react-accordion": "^1.2.2",
     "@radix-ui/react-alert-dialog": "^1.1.3",
     "@radix-ui/react-avatar": "^1.1.2",
@@ -42,6 +44,7 @@
     "@stripe/stripe-js": "^2.4.0",
     "@tanstack/react-table": "^8.20.6",
     "@tinymce/tinymce-react": "^5.1.1",
+    "@trigger.dev/sdk": "^3.3.7",
     "@types/js-cookie": "^3.0.6",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
@@ -81,10 +84,14 @@
   "devDependencies": {
     "@babel/core": "^7.26.0",
     "@babel/eslint-parser": "^7.25.9",
+    "@trigger.dev/build": "^3.3.7",
     "@types/babel__core": "^7",
     "eslint": "^8",
     "eslint-config-next": "13.5.4",
     "eslint-plugin-react": "^7.37.2",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "sharp": "^0.33.5"
   }
 }

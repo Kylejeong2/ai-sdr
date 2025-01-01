@@ -16,6 +16,7 @@
     "devDependencies": {
         "@graham/db": "workspace:^",
         "@graham/shared": "workspace:^",
+        "@trigger.dev/build": "^3.3.7",
         "@types/dotenv": "^8.2.0",
         "@types/node": "^20.12.12",
         "esbuild": "^0.21.4",
@@ -31,6 +32,7 @@
         "@browserbasehq/stagehand": "^1.7.0",
         "@fastify/cors": "^10.0.1",
         "@slack/web-api": "^7.8.0",
+        "@trigger.dev/sdk": "^3.3.7",
         "@upstash/qstash": "^2.7.20",
         "fastify": "^5.2.0",
         "openai": "^4.76.3",

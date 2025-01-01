@@ -42,3 +42,7 @@ enrichment tools
 - searching twitter for their name/potential posts with the company 
     - done with browserbase and stagehand
 
+trigger.dev
+-> api route -> server action -> trigger job
+
+yarn dlx trigger.dev@latest dev

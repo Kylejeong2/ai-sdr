@@ -7,6 +7,17 @@ import { detectEmailType } from '../utils/emailUtils'
 const enrichmentService = new EnrichmentService()
 const CLERK_WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET
 
+type WebhookPayload = {
+  userId: string
+  teamId: string
+  email: string
+  metadata: {
+    source: string
+    type: string
+    [key: string]: any
+  }
+}
+
 type ClerkWebhookPayload = {
   type: string
   data: {
@@ -23,6 +34,34 @@ type ClerkWebhookPayload = {
 }
 
 export async function webhookRoutes(fastify: FastifyInstance) {
+  // Enrichment webhook endpoint
+  fastify.post('/enrich', async (request, reply) => {
+    const payload = request.body as WebhookPayload
+    const { userId, teamId, email, metadata } = payload
+    
+    try {
+      // Queue enrichment job
+      await enrichmentService.addToEnrichmentQueue(
+        userId,
+        teamId,
+        email,
+        metadata
+      )
+
+      reply.code(200).send({ 
+        status: 'success',
+        message: 'Enrichment job queued'
+      })
+    } catch (error) {
+      console.error('Error queueing enrichment job:', error)
+      reply.code(500).send({ 
+        status: 'error',
+        message: (error as Error).message 
+      })
+    }
+  })
+
+  // Clerk webhook endpoint
   fastify.post('/clerk', async (request, reply) => {
     const headers = request.headers
     const payload = request.body as ClerkWebhookPayload
@@ -119,6 +158,7 @@ export async function webhookRoutes(fastify: FastifyInstance) {
           primaryEmail,
           {
             source: 'clerk_signup',
+            type: 'user.created',
             firstName: first_name,
             lastName: last_name,
             signupTimestamp: new Date(),
@@ -147,74 +187,5 @@ export async function webhookRoutes(fastify: FastifyInstance) {
     }
 
     reply.code(200).send('Webhook processed')
-  })
-
-  // Enrichment webhook endpoint
-  fastify.post('/enrich', async (request, reply) => {
-    const { userId, teamId, email, metadata } = request.body as { 
-      userId: string
-      teamId: string
-      email: string
-      metadata: any
-    }
-    
-    try {
-      // Get the lead for this user
-      const teamMember = await prisma.teamMember.findFirst({
-        where: { userId, teamId },
-        include: { leads: true }
-      })
-
-      if (!teamMember || !teamMember.leads[0]) {
-        throw new Error('No lead found for user')
-      }
-
-      const lead = teamMember.leads[0]
-
-      // Process the enrichment
-      await enrichmentService.processEnrichment(userId)
-
-      // Create activity for enrichment completion
-      await prisma.activity.create({
-        data: {
-          type: 'enrichment_completed',
-          description: `Enrichment completed for ${email}`,
-          leadId: lead.id,
-          teamMemberId: teamMember.id,
-          metadata
-        }
-      })
-
-      reply.code(200).send({ status: 'success' })
-    } catch (error) {
-      console.error('Error processing enrichment webhook:', error)
-      
-      // Get the lead and team member even in error case for activity logging
-      const teamMember = await prisma.teamMember.findFirst({
-        where: { userId, teamId },
-        include: { leads: true }
-      })
-
-      if (teamMember && teamMember.leads[0]) {
-        // Create activity for failed enrichment
-        await prisma.activity.create({
-          data: {
-            type: 'enrichment_failed',
-            description: `Enrichment failed for ${email}: ${(error as Error).message}`,
-            leadId: teamMember.leads[0].id,
-            teamMemberId: teamMember.id,
-            metadata: {
-              ...metadata,
-              error: (error as Error).message
-            }
-          }
-        })
-      }
-
-      reply.code(500).send({ 
-        status: 'error',
-        message: (error as Error).message 
-      })
-    }
   })
 } 
