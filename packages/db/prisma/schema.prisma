@@ -121,8 +121,9 @@ model Team {
 }
 
 model TeamMember {
-  id          String       @id @default(cuid())
-  userId      String       // Clerk user ID
+  id          String       @id @default(uuid())
+  user        User         @relation(fields: [userId], references: [id])
+  userId      String       // Reference to our User model id
   teamId      String
   team        Team         @relation(fields: [teamId], references: [id])
   role        TeamRole
@@ -132,23 +133,28 @@ model TeamMember {
   comments    Comment[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  @@unique([userId, teamId])  // A user can only be a member of a team once
 }
 
 model User {
-  id          String      @id @default(cuid())
-  email       String      @unique
-  clerkId     String?     @unique
+  id          String      @id @default(uuid())
+  clerkId     String      @unique  // Clerk user ID
+  email       String?     // Make email optional since it comes from Clerk
   firstName   String?
   lastName    String?
-  teamId      String      // Team they signed up for
-  team        Team        @relation(fields: [teamId], references: [id])
-  enrichmentData Json?    // Store enrichment data here
-  status      String      @default("NEW") // Track user status (NEW, ENRICHED, CONTACTED)
+  teamId      String?     // Make teamId optional
+  team        Team?       @relation(fields: [teamId], references: [id])
+  enrichmentData Json?    
+  status      String      @default("NEW")
   role        String      @default("MEMBER")
   
   // Clerk organization they belong to
   clerkOrgId  String?
   clerkOrg    ClerkManagedOrg? @relation(fields: [clerkOrgId], references: [id])
+  
+  // Add relation to TeamMember
+  teamMemberships TeamMember[]
   
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt

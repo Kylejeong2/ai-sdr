@@ -1,8 +1,12 @@
-import { task } from "@trigger.dev/sdk/v3"
+import { configure, task } from "@trigger.dev/sdk/v3"
 import { z } from "zod"
 import { prisma, LeadStatus, EmailType } from '@graham/db'
 import axios from 'axios'
 import { Stagehand } from '@browserbasehq/stagehand'
+
+configure({
+    secretKey: process.env.TRIGGER_SECRET_KEY
+})
 
 // Define enrichment task schema
 const enrichmentSchema = z.object({

@@ -3,63 +3,42 @@ import { prisma } from '@graham/db'
 import { NextResponse } from 'next/server'
 
 async function createOrgEntities(userId: string, orgId: string, name: string, user: any) {
-  // 1. Check if team already exists
-  const existingTeam = await prisma.team.findUnique({
+  // 1. Get the existing team and verify member exists
+  const team = await prisma.team.findUnique({
     where: { id: orgId },
-    include: { members: true }
-  })
-
-  // 2. Check if user already exists
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { clerkId: userId },
-        { email: user.emailAddresses[0].emailAddress }
-      ]
-    }
-  })
-
-  // 3. Create or update team
-  const team = existingTeam || await prisma.team.create({
-    data: {
-      id: orgId,
-      name: name
-    }
-  })
-
-  // 4. Create or update user
-  const dbUser = existingUser 
-    ? await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          clerkId: userId,
-          email: user.emailAddresses[0].emailAddress,
-          teamId: team.id,
-          role: 'OWNER',
-          firstName: user.firstName || '',
-          lastName: user.lastName || ''
+    include: { 
+      members: {
+        include: {
+          user: true
         }
-      })
-    : await prisma.user.create({
-        data: {
-          clerkId: userId,
-          email: user.emailAddresses[0].emailAddress,
-          teamId: team.id,
-          role: 'OWNER',
-          firstName: user.firstName || '',
-          lastName: user.lastName || ''
-        }
-      })
-
-  // 5. Create team member if doesn't exist
-  const existingMember = existingTeam?.members.find(m => m.userId === userId)
-  const teamMember = existingMember || await prisma.teamMember.create({
-    data: {
-      userId,
-      teamId: team.id,
-      role: 'OWNER'
+      }
     }
   })
+
+  if (!team) {
+    throw new Error('Team not found')
+  }
+
+  // 2. Find the team member
+  const teamMember = team.members.find(m => m.user.clerkId === userId)
+  if (!teamMember) {
+    throw new Error('Team member not found')
+  }
+
+  // 3. Update user if needed
+  const dbUser = teamMember.user
+  if (dbUser.email !== user.emailAddresses[0].emailAddress || 
+      dbUser.firstName !== user.firstName || 
+      dbUser.lastName !== user.lastName) {
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: {
+        email: user.emailAddresses[0].emailAddress,
+        firstName: user.firstName || '',
+        lastName: user.lastName || ''
+      }
+    })
+  }
 
   return { team, teamMember, dbUser }
 }
@@ -91,8 +70,8 @@ export async function GET() {
 
     await createOrgEntities(userId, orgId, org.name, user)
 
-    // Redirect to dashboard
-    return NextResponse.redirect(new URL('/dashboard', process.env.NEXT_PUBLIC_BASE_URL))
+    // Redirect to onboarding
+    return NextResponse.redirect(new URL('/onboarding', process.env.NEXT_PUBLIC_BASE_URL))
   } catch (error) {
     console.error('Error creating organization:', error)
     return NextResponse.json(

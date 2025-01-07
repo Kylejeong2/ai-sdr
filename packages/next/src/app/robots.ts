@@ -8,7 +8,6 @@ export default function robots() {
           '/dashboard',
           '/admin',
           '/api',
-          '/creating-account',
           '/*.json',
           '/onboarding'
         ]

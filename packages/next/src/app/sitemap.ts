@@ -1,7 +1,7 @@
 import { prisma } from "@graham/db"
 
 export default async function sitemap() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   // Static routes with custom priorities
   const staticRoutes = [
@@ -31,8 +31,7 @@ export default async function sitemap() {
 
   // Industry-specific landing pages (for SEO targeting)
   const industries = [
-    'dental', 'plumbing', 'hvac', 'legal', 
-    'real-estate', 'medical', 'automotive'
+    'saas', 'devtools',
   ]
 
   const industryRoutes = industries.map(industry => ({

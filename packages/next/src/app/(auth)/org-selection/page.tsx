@@ -62,16 +62,16 @@ export default function OrgSelectionPage() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-2">
-          <Card className="group relative overflow-hidden border border-gray-800/50 bg-black/40 backdrop-blur-xl transition-all duration-300 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-500/10 w-full">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <Card className="group relative overflow-hidden border border-gray-800/50 bg-black/40 backdrop-blur-xl transition-all duration-300 hover:border-blue-500/50 hover:shadow-2xl hover:shadow-blue-500/10 hover:scale-[1.02] hover:-translate-y-1 w-full">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out" />
             <div className="relative p-8">
               <div className="flex flex-col items-center text-center space-y-6">
-                <div className="p-4 rounded-full bg-blue-500/20 ring-2 ring-blue-500/40 shadow-xl">
+                <div className="p-4 rounded-full bg-blue-500/20 ring-2 ring-blue-500/40 shadow-xl transform group-hover:scale-110 transition-all duration-300">
                   <Building2 className="h-8 w-8 text-blue-400" />
                 </div>
                 <div className="w-full">
-                  <h3 className="text-2xl font-semibold text-white mb-3">Create New Organization</h3>
-                  <p className="text-gray-400 mb-6">
+                  <h3 className="text-2xl font-semibold text-white mb-3 transform group-hover:translate-y-[-2px] transition-all duration-300">Create New Organization</h3>
+                  <p className="text-gray-400 mb-6 transform group-hover:translate-y-[-2px] transition-all duration-300">
                     Start fresh with a new workspace for your team
                   </p>
                   <CreateOrganization 
