@@ -2,52 +2,71 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@graham/db'
 import { TeamRole } from '@graham/db'
 import { tasks } from "@trigger.dev/sdk/v3"
+import { Webhook } from "svix"
+import { headers } from 'next/headers'
+import type { WebhookEvent } from "@clerk/nextjs/server"
 import type { enrichUserTask } from '@/trigger/enrichment'
 
 export const dynamic = "force-dynamic"
 
-// async function validateRequest(req: Request) {
-//   const payloadString = await req.text()
-//   const headerPayload = headers()
+async function validateRequest(req: Request, webhookSecret?: string) {
+  const payloadString = await req.text()
+  const headerPayload = headers()
 
-//   // Get the webhook secret
-//   const webhookSecret = process.env.CLERK_WEBHOOK_SECRET // should be from the clerk webhook that is set
+  // Get the webhook secret - fallback to env if not provided
+  const secret = webhookSecret || process.env.CLERK_WEBHOOK_SECRET
 
-//   if (!webhookSecret) {
-//     throw new Error('Missing CLERK_WEBHOOK_SECRET environment variable')
-//   }
+  if (!secret) {
+    throw new Error('No webhook secret found')
+  }
 
-//   // Get the headers
-//   const svixHeaders = {
-//     'svix-id': headerPayload.get('svix-id') ?? '',
-//     'svix-timestamp': headerPayload.get('svix-timestamp') ?? '',
-//     'svix-signature': headerPayload.get('svix-signature') ?? ''
-//   }
+  // Get the headers
+  const svixHeaders = {
+    'svix-id': headerPayload.get('svix-id') ?? '',
+    'svix-timestamp': headerPayload.get('svix-timestamp') ?? '',
+    'svix-signature': headerPayload.get('svix-signature') ?? ''
+  }
 
-//   // Check if headers are present
-//   if (!svixHeaders['svix-id'] || !svixHeaders['svix-timestamp'] || !svixHeaders['svix-signature']) {
-//     console.error('Missing Svix headers:', svixHeaders)
-//     throw new Error('Missing Svix headers')
-//   }
+  // Check if headers are present
+  if (!svixHeaders['svix-id'] || !svixHeaders['svix-timestamp'] || !svixHeaders['svix-signature']) {
+    console.error('Missing Svix headers:', svixHeaders)
+    throw new Error('Missing Svix headers')
+  }
 
-//   try {
-//     const wh = new Webhook(webhookSecret)
-//     const evt = wh.verify(payloadString, svixHeaders) as WebhookEvent
-//     return evt
-//   } catch (err) {
-//     console.error('Webhook verification failed:', err, {
-//       payloadPreview: payloadString.slice(0, 100),
-//       headers: svixHeaders,
-//       secretPreview: webhookSecret.slice(0, 5) + '...'
-//     })
-//     throw new Error(`Webhook verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
-//   }
-// }
+  try {
+    const wh = new Webhook(secret)
+    const evt = wh.verify(payloadString, svixHeaders) as WebhookEvent
+    return { evt, payloadString }
+  } catch (err) {
+    console.error('Webhook verification failed:', err, {
+      payloadPreview: payloadString.slice(0, 100),
+      headers: svixHeaders,
+      secretPreview: secret.slice(0, 5) + '...'
+    })
+    throw new Error(`Webhook verification failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    // const payload = await validateRequest(req)
-    const payload = await req.json()
+    // First try to parse the payload without verification to get org ID
+    const rawPayload = await req.clone().json()
+    console.log('Raw Webhook Payload:', JSON.stringify(rawPayload, null, 2))
+    
+    const orgId = rawPayload.data?.organization_memberships?.[0]?.organization?.id
+    console.log('Extracted Organization ID:', orgId)
+
+    // If we have an org ID, try to find its webhook secret
+    let webhookSecret: string | undefined
+    if (orgId) {
+      const clerkConfig = await prisma.clerkConfig.findFirst({
+        where: { organizationId: orgId }
+      })
+      webhookSecret = clerkConfig?.webhookSecret
+    }
+
+    // Validate with org-specific secret if found, otherwise fallback to env
+    const { evt: payload } = await validateRequest(req, webhookSecret)
     const eventType = payload.type
     console.log(`Processing webhook event: ${eventType}`, payload)
 
@@ -58,21 +77,31 @@ export async function POST(req: Request) {
         const primaryEmail = email_addresses?.[0]?.email_address
         const orgMemberships = organization_memberships ?? []
 
-        // Find the team based on the organization
-        let team = null
-        if (orgMemberships.length > 0) {
-          const orgId = orgMemberships[0].organization.id
-          team = await prisma.team.findFirst({
-            where: {
-              clerkConfig: {
-                organizationId: orgId
-              }
-            },
-            include: {
-              clerkConfig: true
+        // Create user without team if no org membership exists
+        if (orgMemberships.length === 0) {
+          await prisma.user.create({
+            data: {
+              clerkId,
+              email: primaryEmail,
+              firstName: first_name,
+              lastName: last_name,
             }
           })
+          break
         }
+
+        // Find the team based on the organization
+        const orgId = orgMemberships[0].organization.id
+        const team = await prisma.team.findFirst({
+          where: {
+            clerkConfig: {
+              organizationId: orgId
+            }
+          },
+          include: {
+            clerkConfig: true
+          }
+        })
 
         if (!team) {
           throw new Error('No team found for organization')
