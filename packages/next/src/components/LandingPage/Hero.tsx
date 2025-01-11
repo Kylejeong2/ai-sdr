@@ -13,7 +13,7 @@ export function Hero() {
           <span className="text-sm font-medium">Powered by AI</span>
         </div>
         <h1 className="text-5xl md:text-7xl font-bold tracking-tight dark:text-white">
-          Sales Development
+          Inbound Sales
           <span className="text-primary block mt-2">Reimagined with AI</span>
         </h1>
         <p className="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto">

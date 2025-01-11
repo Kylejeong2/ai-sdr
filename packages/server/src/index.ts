@@ -2,6 +2,18 @@ import fastify from 'fastify'
 import cors from '@fastify/cors'
 import { TriggerClient } from "@trigger.dev/sdk"
 import { z } from 'zod'
+import { prisma } from '@graham/db'
+import crypto from 'crypto'
+
+// Extend FastifyRequest type to include team
+declare module 'fastify' {
+  interface FastifyRequest {
+    team?: {
+      id: string
+      name: string
+    }
+  }
+}
 
 const server = fastify({
   logger: true,
@@ -26,6 +38,57 @@ const client = new TriggerClient({
   apiKey: process.env.TRIGGER_API_KEY!,
 })
 
+// API Key authentication middleware
+server.addHook('preHandler', async (request, reply) => {
+  const authHeader = request.headers.authorization
+  
+  // Skip auth for health check
+  if (request.url === '/health') return
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    reply.code(401).send({ error: 'Missing or invalid API key' })
+    return
+  }
+
+  const apiKey = authHeader.split(' ')[1]
+  if (!apiKey) {
+    reply.code(401).send({ error: 'Invalid API key format' })
+    return
+  }
+
+  const hashedKey = crypto.createHash("sha256").update(apiKey).digest("hex")
+
+  try {
+    const key = await prisma.apiKey.findFirst({
+      where: { key: hashedKey },
+      include: {
+        team: true
+      }
+    })
+
+    if (!key) {
+      reply.code(401).send({ error: 'Invalid API key' })
+      return
+    }
+
+    // Update last used timestamp
+    await prisma.apiKey.update({
+      where: { id: key.id },
+      data: { lastUsed: new Date() }
+    })
+
+    // Add team context to request
+    request.team = {
+      id: key.team.id,
+      name: key.team.name
+    }
+  } catch (error) {
+    request.log.error('API key validation error:', error)
+    reply.code(500).send({ error: 'Internal server error' })
+    return
+  }
+})
+
 // Schema for signup payload
 const SignupSchema = z.object({
   email: z.string().email(),
@@ -43,6 +106,11 @@ server.post<{
   try {
     const payload = SignupSchema.parse(request.body)
     
+    if (!request.team) {
+      reply.code(500).send({ error: 'Team context missing' })
+      return
+    }
+
     // Queue enrichment job
     await client.sendEvent({
       name: "user.signup",
@@ -52,6 +120,7 @@ server.post<{
         lastName: payload.lastName,
         company: payload.company,
         timestamp: new Date().toISOString(),
+        teamId: request.team.id
       },
     })
     

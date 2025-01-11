@@ -79,6 +79,11 @@ const settingsNavItems = [
     icon: Users
   },
   {
+    title: 'API Keys',
+    href: '/dashboard/api-keys',
+    icon: Database
+  },
+  {
     title: 'Clerk',
     href: '/dashboard/settings/clerk',
     icon: Settings

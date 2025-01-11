@@ -116,6 +116,7 @@ model Team {
   templates   EmailTemplate[]
   sequences   Sequence[]
   clerkConfig ClerkConfig?
+  apiKeys     ApiKey[]    // Add relation to API keys
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -131,6 +132,7 @@ model TeamMember {
   templates   EmailTemplate[]
   activities  Activity[]
   comments    Comment[]
+  apiKeys     ApiKey[]    // Add relation to API keys created by this member
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -241,6 +243,21 @@ model ABTest {
   teamId      String
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String    // A friendly name for the API key
+  key         String    @unique // Hashed API key
+  prefix      String    @unique // First few chars of the key for display
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  teamId      String
+  team        Team      @relation(fields: [teamId], references: [id])
+  createdBy   TeamMember @relation(fields: [createdById], references: [id])
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model BlogPost {

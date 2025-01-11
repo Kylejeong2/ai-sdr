@@ -8,6 +8,8 @@ configure({
     secretKey: process.env.TRIGGER_SECRET_KEY
 })
 
+// add clay to the enrichment task
+
 // Define enrichment task schema
 const enrichmentSchema = z.object({
   userId: z.string(),
