@@ -116,6 +116,8 @@ model Team {
   templates   EmailTemplate[]
   sequences   Sequence[]
   clerkConfig ClerkConfig?
+  calComConfig CalComConfig?
+  calendlyConfig CalendlyConfig?
   apiKeys     ApiKey[]    // Add relation to API keys
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
@@ -307,4 +309,38 @@ model ClerkManagedOrg {
   users          User[]
 
   @@unique([clerkConfigId, organizationId])
+}
+
+model CalComConfig {
+  id                  String   @id @default(cuid())
+  teamId             String   @unique
+  team               Team     @relation(fields: [teamId], references: [id])
+  apiKey             String
+  webhookSecret      String
+  webhookUrl         String?
+  webhookId          String?  // Store webhook ID from Cal.com for management
+  environment        String   @default("production")
+  lastWebhookReceived DateTime?
+  webhookStatus      String?
+  isActive           Boolean  @default(true)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model CalendlyConfig {
+  id                  String   @id @default(cuid())
+  teamId             String   @unique
+  team               Team     @relation(fields: [teamId], references: [id])
+  accessToken        String
+  webhookSigningKey  String
+  webhookUrl         String?
+  webhookId          String?  // Store webhook ID from Calendly for management
+  organizationId     String?  // Calendly organization ID if applicable
+  lastWebhookReceived DateTime?
+  webhookStatus      String?
+  isActive           Boolean  @default(true)
+  metadata           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }

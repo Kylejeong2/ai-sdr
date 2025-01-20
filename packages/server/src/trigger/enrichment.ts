@@ -134,16 +134,64 @@ const exaLabsClient = axios.create({
   }
 })
 
+// Clay API client setup
+const clayClient = axios.create({
+  baseURL: 'https://api.clay.run/v1',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${process.env.CLAY_API_KEY}`
+  }
+})
+
+// Clay enrichment function
+async function getClayData(email: string, fullName?: string) {
+  try {
+    const { data } = await clayClient.post('/enrich', {
+      email,
+      name: fullName,
+      enrich_person: true,
+      enrich_company: true
+    })
+
+    if (!data.person) {
+      throw new Error('Person not found in Clay')
+    }
+
+    const { person, company } = data
+
+    return {
+      company: company?.name,
+      title: person.title,
+      industry: company?.industry,
+      companySize: company?.employee_count,
+      location: person.location,
+      linkedInUrl: person.linkedin_url,
+      twitterUrl: person.twitter_url,
+      githubUrl: person.github_url,
+      enrichmentData: {
+        person,
+        company,
+        sources: ['clay']
+      }
+    }
+  } catch (error) {
+    console.error('Error getting Clay data:', error)
+    throw error
+  }
+}
+
 async function processCompanyEmailPipeline(email: string) {
-  const [apolloData, linkedInData] = await Promise.all([
+  const [apolloData, clayData, linkedInData] = await Promise.all([
     getApolloData(email),
+    getClayData(email),
     findLinkedInProfile(email)
   ])
 
   return {
     ...apolloData,
+    ...clayData,
     ...linkedInData,
-    sources: ['apollo', 'linkedin'],
+    sources: ['apollo', 'clay', 'linkedin'],
     enrichedAt: new Date()
   }
 }
@@ -157,7 +205,28 @@ async function processNonCompanyEmailPipeline(email: string, fullName: string) {
   await stagehand.init()
 
   try {
-    // First try Google dork search
+    // First try Clay enrichment
+    try {
+      const clayData = await getClayData(email, fullName)
+      if (clayData.linkedInUrl) {
+        const [apolloData, linkedInData] = await Promise.all([
+          getApolloData(email),
+          findLinkedInProfile(clayData.linkedInUrl)
+        ])
+
+        return {
+          ...apolloData,
+          ...clayData,
+          ...linkedInData,
+          sources: ['clay', 'apollo', 'linkedin'],
+          enrichedAt: new Date()
+        }
+      }
+    } catch (error) {
+      console.log('Clay enrichment failed, falling back to other methods:', error)
+    }
+
+    // If Clay fails, try Google dork search
     const googleResults = await googleDorkSearch(stagehand, email, fullName)
     if (googleResults.found && googleResults.linkedInUrl) {
       const [apolloData, linkedInData] = await Promise.all([
