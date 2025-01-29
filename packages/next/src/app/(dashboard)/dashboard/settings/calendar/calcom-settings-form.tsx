@@ -28,7 +28,7 @@ export function CalComSettingsForm() {
       apiKey: team?.calComConfig?.apiKey || '',
       webhookSecret: team?.calComConfig?.webhookSecret || '',
       isActive: team?.calComConfig?.isActive ?? true,
-      environment: team?.calComConfig?.environment || 'production'
+      environment: (team?.calComConfig?.environment || 'production') as 'production' | 'development'
     }
   })
 
