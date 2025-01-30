@@ -86,10 +86,19 @@ const CompanyMindMap: React.FC<CompanyMindMapProps> = ({ data }) => {
     description: data.rootNode.title,
     children: data.rootNode.children.map(transformData),
   };
-
   const handleNodeClick = useCallback((nodeData: any) => {
-    // Add click animation or interaction logic here if needed
-    console.log(nodeData)
+    const element = document.getElementById(`node-${nodeData.id}`);
+    if (element) {
+      element.animate([
+        { transform: 'scale(1)' },
+        { transform: 'scale(1.1)' },
+        { transform: 'scale(1)' }
+      ], {
+        duration: 300,
+        easing: 'ease-in-out'
+      });
+    }
+    console.log(nodeData);
   }, []);
 
   const renderCustomNodeElement = (nodeData: any) => (

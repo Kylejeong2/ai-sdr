@@ -13,10 +13,18 @@ import {
   Pricing,
   Footer,
 } from '@/components/LandingPage';
+import { useAuth } from '@clerk/nextjs';
+import { redirect } from 'next/navigation';
 
 export default function LandingPage() {
+
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const { isSignedIn } = useAuth();
+
+  if (isSignedIn) {
+    redirect('/dashboard');
+  }
 
   useEffect(() => {
     setMounted(true);

@@ -1,0 +1,53 @@
+Explanation/Docs on Enrichment Task
+
+The enrichment system processes leads in two different ways based on email type:
+
+1. Company Email Pipeline
+- For emails using company domains (e.g., @company.com)
+- Uses Apollo and LinkedIn directly
+- Extracts company and person data
+- Updates company research data if needed
+
+2. Personal Email Pipeline (2-step approach)
+a) First Attempt: ExaLabs + Apollo
+- Searches both platforms for the person
+- Matches profiles using similarity scoring
+- If found, gets LinkedIn data
+- Updates company research data
+
+b) Fallback: Google Dork Search
+- Only used if ExaLabs search fails
+- Uses Google to find LinkedIn profile
+- Gets Apollo and LinkedIn data
+- Updates company research data
+
+Company Research:
+- Stored in CompanyData table
+- Updated if older than 30 days
+- Includes data from multiple sources:
+  * LinkedIn
+  * News
+  * Twitter
+  * YouTube
+  * Reddit
+  * GitHub
+  * Funding info
+  * Financial reports
+  * Wikipedia
+  * etc.
+
+Data Flow:
+1. Receive email + user info
+2. Determine email type (company/personal)
+3. Run appropriate pipeline
+4. Update lead with enriched data
+5. Store company data separately
+6. Log activity (success/failure)
+
+Key Features:
+- Efficient: Tries faster methods first
+- Comprehensive: Multiple data sources
+- Persistent: Caches company data
+- Resilient: Multiple fallback options
+- Trackable: Activity logging
+

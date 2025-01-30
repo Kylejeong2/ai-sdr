@@ -2,10 +2,10 @@ import { z } from "zod"
 
 // Define company research task schema
 export const companyResearchSchema = z.object({
-    userId: z.string(),
     teamId: z.string(),
     companyUrl: z.string(),
-    metadata: z.record(z.any())
+    metadata: z.record(z.any()),
+    leadId: z.string()
   })
 
 export type CompanyResearchPayload = z.infer<typeof companyResearchSchema>

@@ -62,8 +62,8 @@ model Lead {
   emails        Email[]
   comments      Comment[]
   tags          Tag[]
-  assignedTo    TeamMember? @relation(fields: [assignedToId], references: [id])
-  assignedToId  String?
+  teamId        String
+  team          Team        @relation(fields: [teamId], references: [id])
   sequence      Sequence?   @relation(fields: [sequenceId], references: [id])
   sequenceId    String?
   activities    Activity[]
@@ -118,7 +118,9 @@ model Team {
   clerkConfig ClerkConfig?
   calComConfig CalComConfig?
   calendlyConfig CalendlyConfig?
+  leads       Lead[]
   apiKeys     ApiKey[]    // Add relation to API keys
+  activities  Activity[]  // Add relation to activities
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 }
@@ -130,7 +132,6 @@ model TeamMember {
   teamId      String
   team        Team         @relation(fields: [teamId], references: [id])
   role        TeamRole
-  leads       Lead[]
   templates   EmailTemplate[]
   activities  Activity[]
   comments    Comment[]
@@ -182,8 +183,10 @@ model Activity {
   metadata    Json?
   leadId      String
   lead        Lead        @relation(fields: [leadId], references: [id])
-  teamMember  TeamMember  @relation(fields: [teamMemberId], references: [id])
-  teamMemberId String
+  team        Team        @relation(fields: [teamId], references: [id])
+  teamMember  TeamMember?  @relation(fields: [teamMemberId], references: [id])
+  teamMemberId String?
+  teamId       String
   createdAt   DateTime    @default(now())
 }
 
@@ -343,4 +346,30 @@ model CalendlyConfig {
   metadata           Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+model CompanyData {
+  id                String      @id @default(cuid())
+  companyName       String
+  companyUrl        String      @unique
+  linkedinData      Json?       // LinkedInData interface
+  competitors       Json?       // Competitor[] interface
+  news             Json?       // NewsItem[] interface 
+  companySummary   Json?
+  twitterProfile   Json?       // {text: string, username: string}
+  recentTweets     Json?       // Tweet[] interface
+  youtubeVideos    Json?       // Video[] interface
+  redditPosts      Json?       // RedditPost[] interface
+  githubUrl        String?
+  fundingData      Json?
+  financialReport  Json?
+  tiktokData       Json?
+  wikipediaData    Json?
+  crunchbaseData   Json?
+  pitchbookData    Json?
+  tracxnData       Json?
+  founders         Json?       // Founder[] interface
+  companyMap       Json?       // CompanyMapData interface
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }
