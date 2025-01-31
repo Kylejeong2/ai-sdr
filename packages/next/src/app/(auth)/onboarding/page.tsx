@@ -55,9 +55,21 @@ export default function OnboardingPage() {
   const { organization, isLoaded } = useOrganization()
   const [currentStep, setCurrentStep] = useState(0)
 
+  const initUser = async () => {
+    try {
+      await fetch('/api/user/init', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('Failed to initialize user:', error);
+    }
+  };
+
   useEffect(() => {
     if (!isLoaded) return
-
+    
+    initUser();
+    
     if (organization) {
       setCurrentStep(1)
     }

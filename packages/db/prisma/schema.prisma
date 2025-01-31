@@ -1,7 +1,9 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+  output        = "../node_modules/.prisma/client"
 }
-
+   
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
@@ -115,9 +117,6 @@ model Team {
   users       User[]       // Users that signed up for this team
   templates   EmailTemplate[]
   sequences   Sequence[]
-  clerkConfig ClerkConfig?
-  calComConfig CalComConfig?
-  calendlyConfig CalendlyConfig?
   leads       Lead[]
   apiKeys     ApiKey[]    // Add relation to API keys
   activities  Activity[]  // Add relation to activities
@@ -138,6 +137,11 @@ model TeamMember {
   apiKeys     ApiKey[]    // Add relation to API keys created by this member
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+
+  // Config relations
+  clerkConfig ClerkConfig?
+  calComConfig CalComConfig?
+  calendlyConfig CalendlyConfig?
 
   @@unique([userId, teamId])  // A user can only be a member of a team once
 }
@@ -277,8 +281,8 @@ model BlogPost {
 
 model ClerkConfig {
   id                  String   @id @default(cuid())
-  teamId             String   @unique
-  team               Team     @relation(fields: [teamId], references: [id])
+  teamMemberId       String   @unique
+  teamMember         TeamMember @relation(fields: [teamMemberId], references: [id])
   publishableKey     String
   secretKey          String
   webhookSecret      String
@@ -316,8 +320,8 @@ model ClerkManagedOrg {
 
 model CalComConfig {
   id                  String   @id @default(cuid())
-  teamId             String   @unique
-  team               Team     @relation(fields: [teamId], references: [id])
+  teamMemberId       String    @unique
+  teamMember         TeamMember @relation(fields: [teamMemberId], references: [id])
   apiKey             String
   webhookSecret      String
   webhookUrl         String?
@@ -333,8 +337,8 @@ model CalComConfig {
 
 model CalendlyConfig {
   id                  String   @id @default(cuid())
-  teamId             String   @unique
-  team               Team     @relation(fields: [teamId], references: [id])
+  teamMemberId       String   @unique
+  teamMember         TeamMember @relation(fields: [teamMemberId], references: [id])
   accessToken        String
   webhookSigningKey  String
   webhookUrl         String?

@@ -4,7 +4,7 @@ import { clerk } from '@/configs/clerk-server';
 import { prisma } from "@graham/db";
 
 export async function POST() {
-  const { userId } = auth();
+  const { userId } = await auth();
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -23,9 +23,11 @@ export async function POST() {
         data: {
           id: userId,
           email: clerkUser.emailAddresses[0].emailAddress,
-          fullName: `${clerkUser.firstName} ${clerkUser.lastName}`,
+          firstName: clerkUser.firstName,
+          lastName: clerkUser.lastName,
           createdAt: new Date(),
           updatedAt: new Date(),
+          clerkId: userId,
         }
       });
 

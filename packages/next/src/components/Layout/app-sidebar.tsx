@@ -16,7 +16,8 @@ import {
   Database,
   Inbox,
   UserPlus,
-  Building2
+  Building2,
+  Webhook
 } from 'lucide-react'
 
 const mainNavItems = [
@@ -69,6 +70,11 @@ const mainNavItems = [
     title: 'Inbox',
     href: '/dashboard/inbox',
     icon: Inbox
+  },
+  {
+    title: 'Webhooks',
+    href: '/dashboard/webhooks',
+    icon: Webhook
   }
 ]
 

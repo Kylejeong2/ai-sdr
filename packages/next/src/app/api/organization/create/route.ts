@@ -2,45 +2,37 @@ import { auth, currentUser } from '@clerk/nextjs/server'
 import { prisma } from '@graham/db'
 import { NextResponse } from 'next/server'
 
-async function createOrgEntities(userId: string, orgId: string, name: string, user: any) {
-  // 1. Get the existing team and verify member exists
-  const team = await prisma.team.findUnique({
+async function createOrgEntities(userId: string, orgId: string, name: string) {
+  // 1. Create team if it doesn't exist
+  const team = await prisma.team.upsert({
     where: { id: orgId },
-    include: { 
+    create: {
+      id: orgId,
+      name: name,
       members: {
-        include: {
-          user: true
+        create: {
+          role: 'ADMIN',
+          user: {
+            connect: { clerkId: userId }
+          }
         }
       }
-    }
-  })
-
-  if (!team) {
-    throw new Error('Team not found')
-  }
-
-  // 2. Find the team member
-  const teamMember = team.members.find(m => m.user.clerkId === userId)
-  if (!teamMember) {
-    throw new Error('Team member not found')
-  }
-
-  // 3. Update user if needed
-  const dbUser = teamMember.user
-  if (dbUser.email !== user.emailAddresses[0].emailAddress || 
-      dbUser.firstName !== user.firstName || 
-      dbUser.lastName !== user.lastName) {
-    await prisma.user.update({
-      where: { id: dbUser.id },
-      data: {
-        email: user.emailAddresses[0].emailAddress,
-        firstName: user.firstName || '',
-        lastName: user.lastName || ''
+    },
+    update: {}, 
+    include: {
+      members: {
+        include: { user: true }
       }
-    })
+    }
+  });
+
+  // 2. Find the team member (should exist now)
+  const teamMember = team.members.find(m => m.user.clerkId === userId);
+  if (!teamMember) {
+    throw new Error('Team member not found after creation');
   }
 
-  return { team, teamMember, dbUser }
+  return { team, teamMember, dbUser: teamMember.user };
 }
 
 // Handle Clerk's redirect after org creation
@@ -68,7 +60,7 @@ export async function GET() {
       }
     ).then(res => res.json())
 
-    await createOrgEntities(userId, orgId, org.name, user)
+    await createOrgEntities(userId, orgId, org.name)
 
     // Redirect to onboarding
     return NextResponse.redirect(new URL('/onboarding', process.env.NEXT_PUBLIC_BASE_URL))
@@ -96,7 +88,7 @@ export async function POST(req: Request) {
     }
 
     const { orgId, name } = await req.json()
-    const result = await createOrgEntities(userId, orgId, name, user)
+    const result = await createOrgEntities(userId, orgId, name)
 
     return NextResponse.json({ 
       success: true,

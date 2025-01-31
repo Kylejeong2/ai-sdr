@@ -20,6 +20,17 @@ const enrichmentSchema = z.object({
   metadata: z.record(z.any())
 })
 
+/**
+ testing 
+
+ {
+  "teamId": "org_2sNcZhdY370JIWGbQQjmPggk9Ta",
+  "email": "khalil@pear.vc",
+  "leadId": "asdf",
+  "metadata": {}
+ }
+ */
+
 type EnrichmentPayload = z.infer<typeof enrichmentSchema>
 
 // Create enrichment task (v3 syntax)
@@ -126,9 +137,10 @@ export const enrichUserTask = task({
     }
   }
 })
+//https://api.apollo.io/api/v1/mixed_people/search
 
 const apolloClient = axios.create({
-  baseURL: 'https://api.apollo.io/v1',
+  baseURL: 'https://api.apollo.io/api/v1',
   headers: {
     'Content-Type': 'application/json',
     'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
@@ -269,7 +281,7 @@ async function googleDorkSearch(stagehand: Stagehand, email: string, fullName: s
 }
 
 async function searchApollo(fullName: string) {
-  const { data } = await apolloClient.post('/people/search', {
+  const { data } = await apolloClient.post('/mixed_people/search', {
     q_person_name: fullName,
     page: 1,
     per_page: 5

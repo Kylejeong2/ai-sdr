@@ -4,24 +4,48 @@ import crypto from 'crypto'
 import { client } from '@/trigger'
 import { prisma } from '@graham/db'
 
-// Verify Calendly webhook signature
-async function verifyCalendlySignature(signature: string, body: string, teamId: string) {
-  const config = await prisma.calendlyConfig.findUnique({
-    where: { teamId }
-  })
-  if (!config?.webhookSigningKey) return false
-  
-  const hmac = crypto.createHmac('sha256', config.webhookSigningKey)
-  hmac.update(body)
-  const hash = hmac.digest('hex')
-  
-  return signature === hash
+type CalComOrganizer = {
+  name: string
+  email: string
+  timezone: string
+  language: {
+    locale: string
+  }
 }
 
+// Verify Calendly webhook signature
+// async function verifyCalendlySignature(signature: string, body: string, teamId: string) {
+//   const config = await prisma.calendlyConfig.findUnique({
+//     where: { teamId }
+//   })
+//   if (!config?.webhookSigningKey) return false
+  
+//   const hmac = crypto.createHmac('sha256', config.webhookSigningKey)
+//   hmac.update(body)
+//   const hash = hmac.digest('hex')
+  
+//   return signature === hash
+// }
+
+// here's what needs to happen
+/** get organizer -> email -> match that to a team member -> match it to the team */
+
 // Verify Cal.com webhook signature
-async function verifyCalComSignature(signature: string, body: string, teamId: string) {
-  const config = await prisma.calComConfig.findUnique({
-    where: { teamId }
+async function verifyCalComSignature(signature: string, body: string, organizer: CalComOrganizer) {
+  // get the team member id from the organizer email
+  const teamMember = await prisma.teamMember.findFirst({
+    where: {
+      user: {
+        email: organizer.email
+      }
+    }
+  })
+  if(!teamMember) return false
+  
+  const config = await prisma.calComConfig.findFirst({
+    where: {
+      teamMemberId: teamMember.id
+    }
   })
   if (!config?.webhookSecret) return false
 
@@ -38,7 +62,7 @@ export async function POST(req: Request) {
   
   // Get webhook source and signature
   const source = headersList.get('x-webhook-source') || ''
-  const calendlySignature = headersList.get('calendly-webhook-signature') || ''
+  // const calendlySignature = headersList.get('calendly-webhook-signature') || ''
   const calComSignature = headersList.get('x-cal-signature-256') || ''
   const teamId = headersList.get('x-team-id') || ''
 
@@ -51,35 +75,46 @@ export async function POST(req: Request) {
     let userData = null
 
     // Handle Calendly webhook
-    if (source === 'calendly' && await verifyCalendlySignature(calendlySignature, body, teamId)) {
-      const config = await prisma.calendlyConfig.findUnique({
-        where: { teamId }
-      })
+    // if (source === 'calendly' && await verifyCalendlySignature(calendlySignature, body, teamId)) {
+    //   const config = await prisma.calendlyConfig.findFirst({
+    //     where: { team }
+    //   })
       
-      if (!config?.isActive) {
-        return new NextResponse('Calendly integration is not active', { status: 400 })
-      }
+    //   if (!config?.isActive) {
+    //     return new NextResponse('Calendly integration is not active', { status: 400 })
+    //   }
 
-      if (jsonBody.event === 'invitee.created') {
-        userData = {
-          email: jsonBody.payload.invitee.email,
-          firstName: jsonBody.payload.invitee.first_name,
-          lastName: jsonBody.payload.invitee.last_name,
-          teamId,
-          metadata: {
-            source: 'calendly',
-            eventType: jsonBody.payload.event_type.name,
-            scheduledTime: jsonBody.payload.scheduled_time,
-            timezone: jsonBody.payload.invitee.timezone,
-            questions: jsonBody.payload.questions_and_answers
+    //   if (jsonBody.event === 'invitee.created') {
+    //     userData = {
+    //       email: jsonBody.payload.invitee.email,
+    //       firstName: jsonBody.payload.invitee.first_name,
+    //       lastName: jsonBody.payload.invitee.last_name,
+    //       teamId,
+    //       metadata: {
+    //         source: 'calendly',
+    //         eventType: jsonBody.payload.event_type.name,
+    //         scheduledTime: jsonBody.payload.scheduled_time,
+    //         timezone: jsonBody.payload.invitee.timezone,
+    //         questions: jsonBody.payload.questions_and_answers
+    //       }
+    //     }
+    //   }
+    // }
+    // // Handle Cal.com webhook
+    // else 
+    if (source === 'cal.com' && await verifyCalComSignature(calComSignature, body, jsonBody.payload.organizer)) {
+      const teamMember = await prisma.teamMember.findFirst({
+        where: {
+          user: {
+              email: jsonBody.payload.organizer.email
           }
         }
-      }
-    }
-    // Handle Cal.com webhook
-    else if (source === 'cal.com' && await verifyCalComSignature(calComSignature, body, teamId)) {
-      const config = await prisma.calComConfig.findUnique({
-        where: { teamId }
+      })
+      if(!teamMember) return false
+      const config = await prisma.calComConfig.findFirst({
+        where: {
+          teamMemberId: teamMember.id
+        }
       })
       
       if (!config?.isActive) {
@@ -126,11 +161,7 @@ export async function POST(req: Request) {
           firstName: userData.firstName,
           lastName: userData.lastName,
           status: 'NEW',
-          assignedTo: {
-            connect: {
-              id: teamMember.id
-            }
-          }
+          teamId: teamMember.teamId,
         }
       })
 
@@ -155,8 +186,6 @@ export async function POST(req: Request) {
     return new NextResponse('Webhook processing failed', { status: 500 })
   }
 } 
-
-
 /*
 example webhook from cal.com
 
