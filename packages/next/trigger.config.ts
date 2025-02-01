@@ -1,4 +1,5 @@
 import { defineConfig } from "@trigger.dev/sdk/v3";
+import { prismaExtension } from "@trigger.dev/build/extensions/prisma";
 
 export default defineConfig({
   project: "proj_ojyplilmqwnqqqilhbgm",
@@ -9,6 +10,12 @@ export default defineConfig({
   build: {
     external: [
       "@playwright/test",
+    ],
+    extensions: [
+      prismaExtension({
+        version: "5.17.0", 
+        schema: "../../packages/db/prisma/schema.prisma",
+      }),
     ],
   },
   retries: {
