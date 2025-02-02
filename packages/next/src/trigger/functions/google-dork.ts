@@ -1,14 +1,5 @@
 import { z } from "zod"
-import axios from 'axios'
 import { Stagehand } from '@browserbasehq/stagehand'
-
-const apolloClient = axios.create({
-    baseURL: 'https://api.apollo.io/v1',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
-    }
-  })
 
 export async function findLinkedInProfile(linkedInUrl: string) {
     const stagehand = new Stagehand({
@@ -63,8 +54,21 @@ export async function getApolloData(email: string) {
           searchParams.q_organization_name = companyName
         }
       }
-  
-      const { data } = await apolloClient.post('/people/search', searchParams)
+
+      const response = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
+        },
+        body: JSON.stringify(searchParams)
+      })
+
+      if (!response.ok) {
+        throw new Error(`Apollo API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
   
       if (!data.people || data.people.length === 0) {
         throw new Error('Person not found in Apollo')

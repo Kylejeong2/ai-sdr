@@ -2,7 +2,6 @@ import { configure, task } from "@trigger.dev/sdk/v3"
 import { z } from "zod"
 import type { Team } from '@graham/db';
 import { prisma, LeadStatus, EmailType } from '@graham/db'
-import axios from 'axios'
 import { Stagehand } from '@browserbasehq/stagehand'
 import { companyResearch } from './functions/company-research'
 import { getApolloData, findLinkedInProfile } from './functions/google-dork'
@@ -139,22 +138,6 @@ export const enrichUserTask = task({
 })
 //https://api.apollo.io/api/v1/mixed_people/search
 
-const apolloClient = axios.create({
-  baseURL: 'https://api.apollo.io/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
-  }
-})
-
-const exaLabsClient = axios.create({
-  baseURL: 'https://api.exa.ai',
-  headers: {
-    'Authorization': `Bearer ${process.env.EXALABS_API_KEY}`,
-    'Content-Type': 'application/json'
-  }
-})
-
 async function processCompanyEmailPipeline(email: string, team: Team, leadId: string) {
   const [apolloData, linkedInData] = await Promise.all([
     getApolloData(email),
@@ -281,21 +264,46 @@ async function googleDorkSearch(stagehand: Stagehand, email: string, fullName: s
 }
 
 async function searchApollo(fullName: string) {
-  const { data } = await apolloClient.post('/mixed_people/search', {
-    q_person_name: fullName,
-    page: 1,
-    per_page: 5
+  const response = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
+    },
+    body: JSON.stringify({
+      q_person_name: fullName,
+      page: 1,
+      per_page: 5
+    })
   })
+
+  if (!response.ok) {
+    throw new Error(`Apollo API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
   return data.people || []
 }
 
 async function searchExaLabs(fullName: string) {
-  const { data } = await exaLabsClient.post('/search', {
-    query: fullName,
-    limit: 5,
-    useAutoprompt: true
+  const response = await fetch('https://api.exa.ai/search', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.EXALABS_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      query: fullName,
+      limit: 5,
+      useAutoprompt: true
+    })
   })
 
+  if (!response.ok) {
+    throw new Error(`ExaLabs API error: ${response.status} ${response.statusText}`)
+  }
+
+  const data = await response.json()
   if (data.results) {
     return data.results;
   }
