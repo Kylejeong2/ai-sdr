@@ -4,7 +4,7 @@ import type { Team } from '@graham/db';
 import { prisma, LeadStatus, EmailType } from '@graham/db'
 import { Stagehand } from '@browserbasehq/stagehand'
 import { companyResearch } from './functions/company-research'
-import { getApolloData, findLinkedInProfile } from './functions/google-dork'
+import { findLinkedInProfile } from './functions/google-dork'
 
 configure({
     secretKey: process.env.TRIGGER_SECRET_KEY
@@ -139,17 +139,15 @@ export const enrichUserTask = task({
 //https://api.apollo.io/api/v1/mixed_people/search
 
 async function processCompanyEmailPipeline(email: string, team: Team, leadId: string) {
-  const [apolloData, linkedInData] = await Promise.all([
-    getApolloData(email),
+  const [linkedInData] = await Promise.all([
     findLinkedInProfile(email),
   ])
 
   const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId)
 
   return {
-    ...apolloData,
     ...linkedInData,
-    sources: ['apollo', 'linkedin'],
+    sources: ['linkedin'],
     enrichedAt: new Date(),
     companyData
   }
@@ -157,21 +155,18 @@ async function processCompanyEmailPipeline(email: string, team: Team, leadId: st
 
 async function processNonCompanyEmailPipeline(email: string, fullName: string, team: Team, leadId: string) {
   // Try Apollo + ExaLabs combination first
-  const [apolloResults, exaResults] = await Promise.all([
-    searchApollo(fullName),
+  const [exaResults] = await Promise.all([
     searchExaLabs(fullName)
   ])
 
-  // Find matching profiles from Exa + Apollo
-  const matchedProfile = findMatchingProfile(apolloResults, exaResults)
-  if (matchedProfile) {
-    const linkedInData = await findLinkedInProfile(matchedProfile.linkedInUrl)
+  if (exaResults) {
+    const linkedInData = await findLinkedInProfile(exaResults.linkedin_url)
     const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId);
 
     return {
-      ...matchedProfile,
+      ...exaResults,
       ...linkedInData,
-      sources: ['apollo', 'exalabs', 'linkedin'],
+      sources: ['exalabs', 'linkedin'],
       enrichedAt: new Date(),
       companyData
     }
@@ -188,17 +183,15 @@ async function processNonCompanyEmailPipeline(email: string, fullName: string, t
     const googleResults = await googleDorkSearch(stagehand, email, fullName)
     
     if (googleResults.found && googleResults.linkedInUrl) {
-      const [apolloData, linkedInData] = await Promise.all([
-        getApolloData(email),
+      const [linkedInData] = await Promise.all([
         findLinkedInProfile(googleResults.linkedInUrl)
       ])
 
       const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId);
 
       return {
-        ...apolloData,
         ...linkedInData,
-        sources: ['google', 'apollo', 'linkedin'],
+        sources: ['google', 'linkedin'],
         enrichedAt: new Date(),
         companyData
       }
@@ -263,28 +256,6 @@ async function googleDorkSearch(stagehand: Stagehand, email: string, fullName: s
   }
 }
 
-async function searchApollo(fullName: string) {
-  const response = await fetch('https://api.apollo.io/api/v1/mixed_people/search', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Api-Key ${process.env.APOLLO_API_KEY}`
-    },
-    body: JSON.stringify({
-      q_person_name: fullName,
-      page: 1,
-      per_page: 5
-    })
-  })
-
-  if (!response.ok) {
-    throw new Error(`Apollo API error: ${response.status} ${response.statusText}`)
-  }
-
-  const data = await response.json()
-  return data.people || []
-}
-
 async function searchExaLabs(fullName: string) {
   const response = await fetch('https://api.exa.ai/search', {
     method: 'POST',
@@ -311,29 +282,4 @@ async function searchExaLabs(fullName: string) {
     console.error('No results found for ExaLabs search');
     return [];
   }
-}
-
-function findMatchingProfile(apolloResults: any[], exaResults: any[]) {
-  for (const apollo of apolloResults) {
-    const match = exaResults.find(exa => 
-      calculateProfileSimilarity(apollo, exa) > 0.8
-    )
-    if (match) {
-      return {
-        ...apollo,
-        linkedInUrl: match.linkedin_url
-      }
-    }
-  }
-  return null
-}
-
-function calculateProfileSimilarity(apollo: any, exa: any): number {
-  let score = 0
-  
-  if (apollo.name.toLowerCase() === exa.name.toLowerCase()) score += 0.4
-  if (apollo.organization?.name?.toLowerCase() === exa.company?.toLowerCase()) score += 0.3
-  if (apollo.title?.toLowerCase() === exa.title?.toLowerCase()) score += 0.3
-  
-  return score
 }
