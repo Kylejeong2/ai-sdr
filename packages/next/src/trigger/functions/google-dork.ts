@@ -31,3 +31,33 @@ export async function findLinkedInProfile(linkedInUrl: string) {
       await stagehand.close()
     }
   }
+
+export async function googleDorkSearch(email: string, fullName?: string) {
+  const stagehand = new Stagehand({
+    env: 'BROWSERBASE',
+    enableCaching: true
+  })
+
+  await stagehand.init()
+
+  try {
+
+    const searchQuery = `site:linkedin.com/in/ "${email}" OR "${fullName}"`
+
+    await stagehand.page.goto(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`)
+      
+    const result = await stagehand.page.extract({
+      instruction: "extract the first LinkedIn profile URL from the search results",
+      schema: z.object({
+        url: z.string()
+      })
+    })
+    
+    return {
+      found: !!result?.url,
+      linkedInUrl: result?.url || ''
+    }
+  } finally {
+    await stagehand.close()
+  }
+}

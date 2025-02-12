@@ -1,0 +1,82 @@
+{
+  "74131fa09fb50e611f0987d6967fa8aaf264a682d3bdb27fc02b854d31c41837": {
+    "data": {
+      "url": "https://www.linkedin.com/in/khalil-undefined-02bba2307"
+    },
+    "timestamp": 1739342655039,
+    "requestId": "cnkcimntp4"
+  },
+  "4f96fecd8ec770921bb0a6ac3e1b9087e1928dbdb98404f2b1a757c30ea82991": {
+    "data": {
+      "url": "https://www.linkedin.com/in/khalil-undefined-02bba2307"
+    },
+    "timestamp": 1739342656294,
+    "requestId": "cnkcimntp4"
+  },
+  "8477196a53001d1960fd9ba6d45d2977357bae32b4a24d97a119b1882f1b5303": {
+    "data": {
+      "progress": "The first LinkedIn profile URL has been successfully extracted.",
+      "completed": true
+    },
+    "timestamp": 1739342680062,
+    "requestId": "jy7jb406m2"
+  },
+  "50a423820a183ba07203f3baa04d37e184be5a2ccbf66c56361522772ca5b586": {
+    "data": {
+      "url": "https://www.linkedin.com/in/khalil-undefined-02bba2307"
+    },
+    "timestamp": 1739342678769,
+    "requestId": "jy7jb406m2"
+  },
+  "170bd99afca086a68ea6f122ef907dbd398f298f93a6da030f3212b698827e59": {
+    "data": {
+      "companyName": "",
+      "companyUrl": "",
+      "title": "",
+      "industry": "",
+      "about": "",
+      "contactInfo": "",
+      "location": "",
+      "profileUrl": ""
+    },
+    "timestamp": 1739342688738,
+    "requestId": "uh2ib22h4ms"
+  },
+  "bcef72f500e2cf4912d50cf4d975c3b08f401cf3437dbd69bb4a739fa25a3d68": {
+    "data": {
+      "companyName": "Tech Innovations Inc.",
+      "companyUrl": "https://www.techinnovations.com",
+      "title": "Senior Software Engineer",
+      "industry": "Information Technology",
+      "about": "Passionate software engineer with over 10 years of experience in developing scalable web applications and working with cross-functional teams. Specializes in JavaScript frameworks and cloud computing.",
+      "contactInfo": "john.doe@example.com",
+      "location": "San Francisco, CA",
+      "profileUrl": "https://www.linkedin.com/in/johndoe"
+    },
+    "timestamp": 1739342690933,
+    "requestId": "uh2ib22h4ms"
+  },
+  "b198cc9900372ec3c86fc1d0f1d5eb859f2266a933ab6de0dbba70dc2864658c": {
+    "data": {
+      "progress": "All required information has been extracted: company name, URL, title, industry, about, contact info, and location.",
+      "completed": true
+    },
+    "timestamp": 1739342692081,
+    "requestId": "uh2ib22h4ms"
+  },
+  "9d5d9720f8747dde639a45e7a1113b5d27a1b03acd8c3aa31589448897e74500": {
+    "data": {
+      "url": "https://www.linkedin.com/in/khalil-undefined-02bba2307"
+    },
+    "timestamp": 1739342712407,
+    "requestId": "2ss75oxn4dy"
+  },
+  "e66ef8d5d8319be5fbef0a3c0acf9c47e0b571d8a5b4ef3dc6b4cf20870cb895": {
+    "data": {
+      "progress": "The first LinkedIn profile URL has been successfully extracted from the search results.",
+      "completed": true
+    },
+    "timestamp": 1739342713423,
+    "requestId": "2ss75oxn4dy"
+  }
+}

@@ -2,9 +2,8 @@ import { configure, task } from "@trigger.dev/sdk/v3"
 import { z } from "zod"
 import type { Team } from '@graham/db';
 import { prisma, LeadStatus, EmailType } from '@graham/db'
-import { Stagehand } from '@browserbasehq/stagehand'
 import { companyResearch } from './functions/company-research'
-import { findLinkedInProfile } from './functions/google-dork'
+import { googleDorkSearch, findLinkedInProfile } from './functions/google-dork'
 
 configure({
     secretKey: process.env.TRIGGER_SECRET_KEY
@@ -63,7 +62,7 @@ export const enrichUserTask = task({
         : await processNonCompanyEmailPipeline(email, `${lead.firstName} ${lead.lastName}`.trim(), team, leadId)
       
       // Update lead with enriched data
-      await prisma.lead.update({
+      const updatedLead = await prisma.lead.update({
         where: { id: leadId },
         data: {
           linkedInUrl: enrichmentData.linkedInUrl,
@@ -95,7 +94,11 @@ export const enrichUserTask = task({
         }
       })
 
-      return { success: true }
+      return { 
+        success: true,
+        enrichmentData,
+        lead: updatedLead
+      }
     } catch (error) {
       console.error('Error in enrichment job:', error)
       
@@ -136,13 +139,20 @@ export const enrichUserTask = task({
     }
   }
 })
-//https://api.apollo.io/api/v1/mixed_people/search
 
 async function processCompanyEmailPipeline(email: string, team: Team, leadId: string) {
-  const [linkedInData] = await Promise.all([
-    findLinkedInProfile(email),
-  ])
+  const googleResults = await googleDorkSearch(email)
 
+  if (!googleResults.found) {
+    console.error("No LinkedIn profile found for email: ", email)
+    return {
+      sources: ['google'],
+      enrichedAt: new Date(),
+      companyData: null
+    }
+  }
+
+  const linkedInData = await findLinkedInProfile(googleResults.linkedInUrl)
   const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId)
 
   return {
@@ -173,34 +183,21 @@ async function processNonCompanyEmailPipeline(email: string, fullName: string, t
   }
 
   // If ExaLabs failed, try Google dork search as fallback
-  const stagehand = new Stagehand({
-    env: 'BROWSERBASE',
-    enableCaching: true
-  })
+  const googleResults = await googleDorkSearch(email, fullName)
+  
+  if (googleResults.found && googleResults.linkedInUrl) {
+    const linkedInData = await findLinkedInProfile(googleResults.linkedInUrl)
+    const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId);
 
-  try {
-    await stagehand.init()
-    const googleResults = await googleDorkSearch(stagehand, email, fullName)
-    
-    if (googleResults.found && googleResults.linkedInUrl) {
-      const [linkedInData] = await Promise.all([
-        findLinkedInProfile(googleResults.linkedInUrl)
-      ])
-
-      const companyData = await getOrUpdateCompanyData(linkedInData, team.id, leadId);
-
-      return {
-        ...linkedInData,
-        sources: ['google', 'linkedin'],
-        enrichedAt: new Date(),
-        companyData
-      }
+    return {
+      ...linkedInData,
+      sources: ['google', 'linkedin'],
+      enrichedAt: new Date(),
+      companyData
     }
-
-    throw new Error('Could not find matching profile')
-  } finally {
-    await stagehand.close()
   }
+
+  throw new Error('Could not find matching profile')
 }
 
 async function getOrUpdateCompanyData(linkedInData: any, teamId: string, leadId: string) {
@@ -237,23 +234,6 @@ async function getOrUpdateCompanyData(linkedInData: any, teamId: string, leadId:
     }
   }
   return companyData;
-}
-
-async function googleDorkSearch(stagehand: Stagehand, email: string, fullName: string) {
-  const searchQuery = `site:linkedin.com/in/ "${fullName}" OR "${email.split('@')[0]}"`
-  await stagehand.page.goto(`https://www.google.com/search?q=${encodeURIComponent(searchQuery)}`)
-  
-  const linkedInUrl = await stagehand.page.extract({
-    instruction: "extract the first LinkedIn profile URL from the search results",
-    schema: z.object({
-      url: z.string().url()
-    })
-  })
-
-  return {
-    found: !!linkedInUrl.url,
-    linkedInUrl: linkedInUrl.url
-  }
 }
 
 async function searchExaLabs(fullName: string) {
