@@ -1,4 +1,4 @@
-# Graham SDR -> into the startup graveyard
+# AI SDR -> into the startup graveyard
 
 An AI-powered SDR automation platform with lead detection, email outreach, and analytics.
 
